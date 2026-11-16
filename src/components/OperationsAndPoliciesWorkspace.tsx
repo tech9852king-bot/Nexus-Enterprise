@@ -430,6 +430,59 @@ export const OperationsAndPoliciesWorkspace: React.FC<
         </div>
       </div>
 
+      {/* V14.0 9-Stage Event Correlation & Deduplication Pipeline (Section 6) */}
+      {state.correlationPipeline && state.correlationPipeline.length > 0 && (
+        <div className="border border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-900 p-5 space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-800 pb-3">
+            <div>
+              <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">
+                9-Stage Event Correlation & Deduplication Pipeline
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                Vision Metadata → Detection → Tracking → Motion → Zone → Correlation → Policy → Incident Candidate → Authorized Workflow
+              </p>
+            </div>
+            <span className="text-xs font-mono text-slate-500 tabular-nums">
+              60s Cooldown Deduplication Active · Zero Auto-Critical Single-Detection Escalation
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {state.correlationPipeline.map((stage) => (
+              <div
+                key={stage.stageNumber}
+                className="p-3.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950/70 space-y-1.5"
+              >
+                <div className="flex items-center justify-between text-xs font-mono tabular-nums">
+                  <span className="font-semibold text-slate-900 dark:text-slate-100">
+                    0{stage.stageNumber}. {stage.stageName}
+                  </span>
+                  <span
+                    className={
+                      stage.status === 'GATED'
+                        ? 'text-amber-600 dark:text-amber-400 font-semibold'
+                        : stage.status === 'COOLDOWN_DEDUP'
+                        ? 'text-sky-600 dark:text-sky-400 font-semibold'
+                        : 'text-emerald-600 dark:text-emerald-400'
+                    }
+                  >
+                    {stage.status}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-600 dark:text-slate-400">
+                  {stage.detail}
+                </p>
+                <div className="text-xs font-mono tabular-nums text-slate-500 pt-1 border-t border-slate-200/70 dark:border-slate-800/80 flex items-center justify-between">
+                  <span>Processed: {stage.itemsProcessed}</span>
+                  <span>Dedup: {stage.deduplicatedCount}</span>
+                  <span>Cooldown: {stage.cooldownSec}s</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Event Intelligence Stream */}
       <div className="border border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-900 p-5 space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-3">

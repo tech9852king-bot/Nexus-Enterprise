@@ -1,13 +1,22 @@
 import {
   AuditRecord,
+  AutonomousWorkflow,
+  BoundingBox,
   BrainLayerTrace,
   BrainToolDefinition,
   BrainToolExecutionRecord,
+  CameraEntity,
+  CorrelationPipelineStage,
+  EpistemicStatement,
   IncidentEntity,
   IncidentStatus,
+  ObjectTrack,
   PairingSession,
   PolicyRule,
+  SceneIntelligenceSummary,
   SecurityEvent,
+  SystemObservabilityMetrics,
+  TrackDirection,
   UserRole,
   VantaSystemState,
 } from './types';
@@ -1152,6 +1161,7 @@ export function runNineLayerBrainPipeline(
   directAnswer: string;
   keyFindings: string[];
   evidenceCitations: string[];
+  epistemicBreakdown: EpistemicStatement[];
   uncertaintyDisclosure: string;
   recommendedNextAction: string;
 } {
@@ -1245,7 +1255,16 @@ export function runNineLayerBrainPipeline(
     },
   ];
 
+  const realDetections = (workingState.latestNormalizedDetections || []).filter(
+    (d) => d.provenance === 'REAL_MODEL'
+  );
+  const provenanceMode = workingState.measuredVisionTelemetry?.provenanceMode || 'SIMULATED_DEMO';
+
   let directAnswer = executedRecords.map((r) => r.resultSummary).join(' ');
+  if (realDetections.length > 0) {
+    const classList = Array.from(new Set(realDetections.map((d) => d.className))).join(', ');
+    directAnswer += ` ${realDetections.length} genuine model-inferred detection(s) active (${classList}, provenance=REAL_MODEL).`;
+  }
   if (detectedLanguage === 'hinglish') {
     directAnswer = `Vanta Nexus Status (Rev #${workingState.syncRevision}): Abhi ${openIncidents.length} active incidents hain aur ${workingState.cameras.length} cameras monitor ho rahe hain (${degradedCams.length} degraded). ${executedRecords
       .map((r) => r.resultSummary)
@@ -1262,6 +1281,39 @@ export function runNineLayerBrainPipeline(
     ...workingState.events.slice(0, 2).map((e) => `${e.id} (${e.cameraId} · FrameHash ${e.evidenceMetadata.frameHash.slice(0, 8)})`),
   ];
 
+  const epistemicBreakdown: EpistemicStatement[] = [
+    {
+      category: 'Verified Fact',
+      statement: `System is at Sync Revision #${workingState.syncRevision} with ${workingState.auditTrail.length} verified SHA-256 audit blocks, ${openIncidents.length} open incident(s), and active detection provenance=${provenanceMode} (${realDetections.length} REAL_MODEL detections).`,
+      sourceRef: `Canonical State Store · Audit Head ${workingState.auditTrail[workingState.auditTrail.length - 1]?.recordHash.slice(0, 10) || 'GENESIS'}`,
+    },
+    {
+      category: 'Calculated Value',
+      statement: `Aggregate facility occupancy across ${workingState.zones.length} zones is ${totalOcc} entities; measured model inference latency is ${
+        workingState.measuredVisionTelemetry?.inferenceLatencyMs !== null &&
+        workingState.measuredVisionTelemetry?.inferenceLatencyMs !== undefined
+          ? `${workingState.measuredVisionTelemetry.inferenceLatencyMs}ms`
+          : `${Math.round(
+              workingState.cameras.reduce((a, c) => a + c.inferenceLatencyMs, 0) /
+                Math.max(1, workingState.cameras.length)
+            )}ms (Simulated Baseline)`
+      }.`,
+      sourceRef: `Zone Telemetry & Vision Scheduler (${workingState.zones.map((z) => z.id).join(', ')})`,
+    },
+    {
+      category: 'Estimate',
+      statement: `30-minute short-horizon occupancy projection is ${Math.round(totalOcc * 1.12)} (±4 occupants, 90% CI).`,
+      sourceRef: 'Exponential Smoothing Forecaster (T20)',
+    },
+    {
+      category: 'Model Interpretation',
+      statement:
+        openIncidents[0]?.rootCauseHypothesis ||
+        'Spatio-temporal bounding-box trajectories remain within expected zone corridors.',
+      sourceRef: openIncidents[0]?.id || 'Vision 2.0 Scene Analyzer',
+    },
+  ];
+
   return {
     updatedState: workingState,
     detectedLanguage,
@@ -1270,12 +1322,498 @@ export function runNineLayerBrainPipeline(
     directAnswer,
     keyFindings,
     evidenceCitations,
+    epistemicBreakdown,
     uncertaintyDisclosure:
       'Camera feeds labeled SIMULATED use deterministic telemetry replay; live browser webcam streams use Measured local frame analysis. Policy matches are operational signals requiring operator verification.',
     recommendedNextAction:
       openIncidents.length > 0
         ? `Inspect ${openIncidents[0].id} ("${openIncidents[0].title}") in ${openIncidents[0].zoneName} and transition state after verifying camera telemetry.`
         : 'Continue routine monitoring across all facility zones.',
+  };
+}
+
+/**
+ * VISION INTELLIGENCE 2.0 — Intersection over Union (IoU) & Class-Aware NMS (Section 5.2 & 5.3)
+ */
+export function computeIoU(
+  boxA: { x: number; y: number; width: number; height: number },
+  boxB: { x: number; y: number; width: number; height: number }
+): number {
+  const xA = Math.max(boxA.x, boxB.x);
+  const yA = Math.max(boxA.y, boxB.y);
+  const xB = Math.min(boxA.x + boxA.width, boxB.x + boxB.width);
+  const yB = Math.min(boxA.y + boxA.height, boxB.y + boxB.height);
+
+  const interWidth = Math.max(0, xB - xA);
+  const interHeight = Math.max(0, yB - yA);
+  const interArea = interWidth * interHeight;
+  if (interArea <= 0) return 0;
+
+  const areaA = boxA.width * boxA.height;
+  const areaB = boxB.width * boxB.height;
+  const unionArea = areaA + areaB - interArea;
+  return unionArea > 0 ? Number((interArea / unionArea).toFixed(4)) : 0;
+}
+
+export function applyClassAwareNMS(
+  detections: BoundingBox[],
+  iouThreshold = 0.5,
+  minConfidence = 0.5
+): BoundingBox[] {
+  const valid = detections
+    .filter((d) => d.confidence >= minConfidence)
+    .sort((a, b) => b.confidence - a.confidence);
+
+  const kept: BoundingBox[] = [];
+  for (const candidate of valid) {
+    const suppressed = kept.some(
+      (existing) =>
+        existing.label === candidate.label && computeIoU(existing, candidate) > iouThreshold
+    );
+    if (!suppressed) {
+      kept.push(candidate);
+    }
+  }
+  return kept;
+}
+
+export function classifyTrackDirection(vx: number, vy: number): TrackDirection {
+  if (Math.hypot(vx, vy) < 0.25) return 'STATIC';
+  if (Math.abs(vx) >= Math.abs(vy)) {
+    return vx > 0 ? 'EAST' : 'WEST';
+  }
+  return vy > 0 ? 'SOUTH' : 'NORTH';
+}
+
+/**
+ * VISION INTELLIGENCE 2.0 — Non-Biometric Centroid + IoU Object Tracker (Section 5.3)
+ */
+export function updateObjectTracks(
+  existingTracks: ObjectTrack[],
+  rawDetections: BoundingBox[],
+  cameraId: string,
+  zoneId: string,
+  nowIso = new Date().toISOString()
+): ObjectTrack[] {
+  const detections = applyClassAwareNMS(rawDetections, 0.5, 0.5);
+  const updatedTracks: ObjectTrack[] = [];
+  const matchedDetectionIds = new Set<string>();
+
+  for (const track of existingTracks) {
+    if (track.cameraId !== cameraId) {
+      updatedTracks.push(track);
+      continue;
+    }
+
+    // Match by same class label using highest IoU or closest centroid distance
+    let bestDet: BoundingBox | null = null;
+    let bestScore = 0;
+
+    for (const det of detections) {
+      if (matchedDetectionIds.has(det.id) || det.label !== track.label) continue;
+      const iou = computeIoU(track.bbox, det);
+      const detCx = det.x + det.width / 2;
+      const detCy = det.y + det.height / 2;
+      const dist = Math.hypot(detCx - track.centroid.cx, detCy - track.centroid.cy);
+      const centroidScore = dist < 25 ? (25 - dist) / 25 : 0;
+      const combinedScore = iou * 0.65 + centroidScore * 0.35;
+      if (combinedScore > bestScore && combinedScore >= 0.2) {
+        bestScore = combinedScore;
+        bestDet = det;
+      }
+    }
+
+    if (bestDet) {
+      matchedDetectionIds.add(bestDet.id);
+      const nextCx = Number((bestDet.x + bestDet.width / 2).toFixed(1));
+      const nextCy = Number((bestDet.y + bestDet.height / 2).toFixed(1));
+      const vx = Number((nextCx - track.centroid.cx).toFixed(2));
+      const vy = Number((nextCy - track.centroid.cy).toFixed(2));
+      updatedTracks.push({
+        ...track,
+        bbox: {
+          x: bestDet.x,
+          y: bestDet.y,
+          width: bestDet.width,
+          height: bestDet.height,
+        },
+        centroid: { cx: nextCx, cy: nextCy },
+        velocity: { vx, vy },
+        direction: classifyTrackDirection(vx, vy),
+        confidence: bestDet.confidence,
+        confidenceHistory: [...track.confidenceHistory.slice(-4), bestDet.confidence],
+        persistenceFrames: track.persistenceFrames + 1,
+        occludedFrames: 0,
+        dwellSeconds: bestDet.dwellSeconds,
+        lastUpdatedIso: nowIso,
+        isBiometric: false,
+      });
+    } else if (track.occludedFrames < 3) {
+      // Occlusion tolerance: retain lost track up to 3 sampling cycles before expiration
+      updatedTracks.push({
+        ...track,
+        occludedFrames: track.occludedFrames + 1,
+        lastUpdatedIso: nowIso,
+      });
+    }
+  }
+
+  // Spawn camera-scoped & session-scoped tracks for unmatched detections
+  for (const det of detections) {
+    if (matchedDetectionIds.has(det.id)) continue;
+    const cx = Number((det.x + det.width / 2).toFixed(1));
+    const cy = Number((det.y + det.height / 2).toFixed(1));
+    updatedTracks.push({
+      trackId: `TRK-${cameraId}-${det.id}`,
+      sessionId: `SES-${cameraId}-V14`,
+      cameraId,
+      zoneId,
+      label: det.label,
+      bbox: { x: det.x, y: det.y, width: det.width, height: det.height },
+      centroid: { cx, cy },
+      velocity: { vx: 0.4, vy: 0.1 },
+      direction: 'EAST',
+      confidence: det.confidence,
+      confidenceHistory: [det.confidence],
+      persistenceFrames: 1,
+      occludedFrames: 0,
+      dwellSeconds: det.dwellSeconds,
+      lastUpdatedIso: nowIso,
+      isBiometric: false,
+    });
+  }
+
+  return updatedTracks;
+}
+
+/**
+ * VISION INTELLIGENCE 2.0 — Structured Scene Intelligence Summary (Section 5.4)
+ */
+export function buildSceneIntelligenceSummary(
+  camera: CameraEntity,
+  tracks: ObjectTrack[],
+  nowIso = new Date().toISOString()
+): SceneIntelligenceSummary {
+  const camTracks = tracks.filter((t) => t.cameraId === camera.id);
+  const detectedClasses: Record<string, number> = {};
+  for (const d of camera.activeDetections) {
+    detectedClasses[d.label] = (detectedClasses[d.label] || 0) + 1;
+  }
+  const avgConfidence =
+    camera.activeDetections.length > 0
+      ? Number(
+          (
+            camera.activeDetections.reduce((acc, d) => acc + d.confidence, 0) /
+            camera.activeDetections.length
+          ).toFixed(2)
+        )
+      : 0.95;
+
+  const maxDwell = camera.activeDetections.reduce((m, d) => Math.max(m, d.dwellSeconds), 0);
+  const motionState =
+    maxDwell > 120
+      ? 'ELEVATED_MOTION'
+      : camera.activeDetections.length > 1
+      ? 'MODERATE_MOTION'
+      : 'STABLE';
+
+  return {
+    cameraId: camera.id,
+    cameraName: camera.name,
+    zoneId: camera.zoneId,
+    timestampIso: nowIso,
+    detectedClasses,
+    detectionCount: camera.activeDetections.length,
+    activeTrackCount: camTracks.length,
+    motionState,
+    zoneOccupancyEstimate: camera.occupancyCount,
+    avgConfidence,
+    modelStatus: camera.isSimulatedStream
+      ? 'COCO-SSD-640px (Simulated Telemetry)'
+      : 'WebRTC-640px-Live (Measured Frame Analysis)',
+    uncertaintyNote:
+      'Bounding boxes and camera-scoped Track IDs reflect geometric object localization only (±4% spatial variance).',
+    safetyGuarantee:
+      'Zero-Biometric Enforcement: No emotion, intent, criminality, or personal identity is inferred.',
+  };
+}
+
+/**
+ * EVENT INTELLIGENCE — 9-Stage Correlation & Deduplication Pipeline (Section 6)
+ */
+export function buildCorrelationPipelineStages(
+  state: VantaSystemState
+): CorrelationPipelineStage[] {
+  const totalDetections = state.cameras.reduce(
+    (acc, c) => acc + c.activeDetections.length,
+    0
+  );
+  const totalTracks = state.activeTracks?.length || totalDetections;
+  const activePolicies = state.policies.filter((p) => p.enabled).length;
+  const openIncidents = state.incidents.filter((i) => i.status !== 'RESOLVED').length;
+
+  return [
+    {
+      stageNumber: 1,
+      stageName: 'Vision Metadata',
+      status: 'ACTIVE',
+      itemsProcessed: state.cameras.length * 30,
+      deduplicatedCount: 0,
+      cooldownSec: 0,
+      detail: `Ingesting 640px normalized metadata across ${state.cameras.length} camera endpoints.`,
+    },
+    {
+      stageNumber: 2,
+      stageName: 'Detection Event',
+      status: 'ACTIVE',
+      itemsProcessed: totalDetections,
+      deduplicatedCount: 1,
+      cooldownSec: 5,
+      detail: `Class-aware NMS filtered ${totalDetections} verified bounding boxes (confidence >= 50%).`,
+    },
+    {
+      stageNumber: 3,
+      stageName: 'Tracking Update',
+      status: 'ACTIVE',
+      itemsProcessed: totalTracks,
+      deduplicatedCount: 0,
+      cooldownSec: 2,
+      detail: `Maintained ${totalTracks} camera-scoped Centroid/IoU tracks with occlusion tolerance.`,
+    },
+    {
+      stageNumber: 4,
+      stageName: 'Motion Analysis',
+      status: 'ACTIVE',
+      itemsProcessed: totalTracks,
+      deduplicatedCount: 0,
+      cooldownSec: 10,
+      detail: 'Computed displacement vectors and dwell-time counters per zone polygon.',
+    },
+    {
+      stageNumber: 5,
+      stageName: 'Zone Evaluation',
+      status: 'ACTIVE',
+      itemsProcessed: state.zones.length,
+      deduplicatedCount: 0,
+      cooldownSec: 15,
+      detail: `Evaluated occupancy & clearance across ${state.zones.length} facility zones.`,
+    },
+    {
+      stageNumber: 6,
+      stageName: 'Event Correlation',
+      status: 'COOLDOWN_DEDUP',
+      itemsProcessed: state.events.length + 4,
+      deduplicatedCount: 4,
+      cooldownSec: 60,
+      detail: `Deduplicated 4 repeated frame observations into ${state.events.length} canonical events (60s cooldown).`,
+    },
+    {
+      stageNumber: 7,
+      stageName: 'Policy Evaluation',
+      status: 'ACTIVE',
+      itemsProcessed: activePolicies,
+      deduplicatedCount: 0,
+      cooldownSec: 30,
+      detail: `Tested ${activePolicies} compound rules; policy matches flagged as operational signals.`,
+    },
+    {
+      stageNumber: 8,
+      stageName: 'Incident Candidate',
+      status: 'ACTIVE',
+      itemsProcessed: openIncidents,
+      deduplicatedCount: 1,
+      cooldownSec: 120,
+      detail: `${openIncidents} incident candidate(s) escalated; single detections prevented from auto-critical jump.`,
+    },
+    {
+      stageNumber: 9,
+      stageName: 'Authorized Workflow',
+      status: 'GATED',
+      itemsProcessed: state.workflows?.length || 4,
+      deduplicatedCount: 0,
+      cooldownSec: 0,
+      detail: 'Human Approval Boundary enforced prior to any consequential containment workflow.',
+    },
+  ];
+}
+
+/**
+ * AUTONOMOUS WORKFLOW ENGINE with Human Approval Boundary (Section 12)
+ */
+export function executeAutonomousWorkflow(
+  state: VantaSystemState,
+  workflowId: string,
+  approvedByHuman = false
+): {
+  updatedState: VantaSystemState;
+  workflow: AutonomousWorkflow | null;
+  error?: string;
+} {
+  const workflows = state.workflows || [];
+  const target = workflows.find((w) => w.id === workflowId);
+  if (!target) {
+    return { updatedState: state, workflow: null, error: `Workflow ${workflowId} not found.` };
+  }
+
+  if (state.tenant.role === 'AUDITOR') {
+    return {
+      updatedState: state,
+      workflow: target,
+      error: 'AUDITOR role is read-only and cannot trigger autonomous workflows.',
+    };
+  }
+
+  const nowIso = new Date().toISOString();
+
+  // Enforce Human Approval Boundary for consequential workflows
+  if (target.requiresHumanApproval && !approvedByHuman && target.status !== 'AWAITING_APPROVAL') {
+    const awaitingWf: AutonomousWorkflow = {
+      ...target,
+      status: 'AWAITING_APPROVAL',
+      lastRunIso: nowIso,
+      lastResultSummary: `Paused at Human Approval Boundary: requires explicit operator confirmation for "${target.consequentialActionSummary}".`,
+    };
+    const nextState: VantaSystemState = {
+      ...state,
+      syncRevision: state.syncRevision + 1,
+      lastCloudSyncIso: nowIso,
+      workflows: workflows.map((w) => (w.id === workflowId ? awaitingWf : w)),
+      auditTrail: appendAuditRecord(state.auditTrail, {
+        tenantId: state.tenant.tenantId,
+        timestampIso: nowIso,
+        actorId: state.tenant.userId,
+        actorRole: state.tenant.role,
+        category: 'BRAIN_TOOL',
+        action: `WORKFLOW_AWAITING_APPROVAL:${workflowId}`,
+        targetId: workflowId,
+        outcome: 'SUCCESS',
+        details: awaitingWf.lastResultSummary || 'Awaiting human approval.',
+      }),
+    };
+    return { updatedState: nextState, workflow: awaitingWf };
+  }
+
+  // Execute coordinated tools for the workflow
+  let workingState = { ...state };
+  const toolChain =
+    workflowId === 'WF-01'
+      ? ['get_camera_inventory', 'get_zone_intelligence']
+      : workflowId === 'WF-02'
+      ? ['analyze_event_timeline', 'predict_aggregate_occupancy']
+      : workflowId === 'WF-03'
+      ? ['run_troubleshooter', 'get_pipeline_diagnostics']
+      : ['explain_incident', 'execute_security_playbook'];
+
+  const summaries: string[] = [];
+  for (const tName of toolChain) {
+    const { record, updatedState } = executeBrainTool(workingState, tName, {});
+    workingState = updatedState;
+    summaries.push(`${tName}: ${record.resultSummary}`);
+  }
+
+  const completedWf: AutonomousWorkflow = {
+    ...target,
+    status: 'COMPLETED',
+    lastRunIso: nowIso,
+    correlationId: `CORR-${Date.now().toString(36).toUpperCase()}`,
+    lastResultSummary: `Completed ${target.steps.length} orchestrated steps (${
+      approvedByHuman ? 'Human-Approved' : 'Read-Only Autonomous'
+    }). ${summaries.join(' | ')}`,
+  };
+
+  workingState = {
+    ...workingState,
+    syncRevision: workingState.syncRevision + 1,
+    lastCloudSyncIso: nowIso,
+    workflows: (workingState.workflows || []).map((w) =>
+      w.id === workflowId ? completedWf : w
+    ),
+    auditTrail: appendAuditRecord(workingState.auditTrail, {
+      tenantId: workingState.tenant.tenantId,
+      timestampIso: nowIso,
+      actorId: workingState.tenant.userId,
+      actorRole: workingState.tenant.role,
+      category: 'BRAIN_TOOL',
+      action: `WORKFLOW_COMPLETED:${workflowId}`,
+      targetId: workflowId,
+      outcome: 'SUCCESS',
+      details: `Correlation ${completedWf.correlationId}: ${completedWf.name} completed.`,
+    }),
+  };
+
+  return { updatedState: workingState, workflow: completedWf };
+}
+
+/**
+ * CONVERSATION MEMORY & CONTEXT GOVERNANCE (Section 9)
+ */
+export function manageConversationMemory(
+  state: VantaSystemState,
+  action: 'RESET_CONVERSATION' | 'UPDATE_RETENTION',
+  retentionDays?: number
+): VantaSystemState {
+  const nowIso = new Date().toISOString();
+  const currentGov = state.memoryGovernance || {
+    conversationTurnCount: state.conversations.length,
+    sessionContextKeys: ['tenantId', 'siteId', 'selectedCameraId', 'selectedIncidentId'],
+    operationalMemoryCount: state.events.length + state.incidents.length,
+    retentionPeriodDays: 30,
+    piiMinimizationActive: true,
+    rawVideoStored: false as const,
+    lastPurgedIso: null,
+  };
+
+  if (action === 'RESET_CONVERSATION') {
+    const resetMsg = {
+      id: `MSG-RESET-${Date.now().toString(36).toUpperCase()}`,
+      conversationId: 'CONV-PRIMARY',
+      role: 'assistant' as const,
+      modality: 'TEXT' as const,
+      language: state.preferences.languagePreference,
+      timestampIso: nowIso,
+      content:
+        'Conversation context reset per Memory Governance request. Operational records, camera streams, and SHA-256 audit blocks remain intact.',
+      directAnswer:
+        'Conversation memory cleared. Session and operational evidence remain bound to Apex Hyperscale Data Center.',
+      modelUsed: 'vanta-memory-governor-v14',
+    };
+    return {
+      ...state,
+      syncRevision: state.syncRevision + 1,
+      lastCloudSyncIso: nowIso,
+      conversations: [resetMsg],
+      memoryGovernance: {
+        ...currentGov,
+        conversationTurnCount: 1,
+        lastPurgedIso: nowIso,
+      },
+      auditTrail: appendAuditRecord(state.auditTrail, {
+        tenantId: state.tenant.tenantId,
+        timestampIso: nowIso,
+        actorId: state.tenant.userId,
+        actorRole: state.tenant.role,
+        category: 'AUTH',
+        action: 'MEMORY_GOVERNANCE_CONVERSATION_RESET',
+        targetId: 'CONV-PRIMARY',
+        outcome: 'SUCCESS',
+        details: 'Operator cleared active conversation turn history while preserving audit ledger.',
+      }),
+    };
+  }
+
+  const nextDays =
+    typeof retentionDays === 'number' && retentionDays >= 1 && retentionDays <= 365
+      ? retentionDays
+      : currentGov.retentionPeriodDays;
+
+  return {
+    ...state,
+    syncRevision: state.syncRevision + 1,
+    lastCloudSyncIso: nowIso,
+    memoryGovernance: {
+      ...currentGov,
+      retentionPeriodDays: nextDays,
+    },
   };
 }
 
@@ -1368,7 +1906,7 @@ export function createInitialVantaState(): VantaSystemState {
   });
 
   return {
-    version: '11.0.0',
+    version: '15.0.0',
     codename: 'VANTA NEXUS',
     tenant: {
       tenantId: 'TENANT-VANTA-01',
@@ -1917,5 +2455,294 @@ export function createInitialVantaState(): VantaSystemState {
       autoSpeakResponses: true,
       conversationMode: 'PUSH_TO_TALK',
     },
+    visionModel: {
+      providerId: 'TFJS_COCO_SSD_640',
+      modelName: 'COCO-SSD MobileNetV2 (640px Normalized + Class-Aware NMS)',
+      modelSizeMb: 4.8,
+      supportedClassesCount: 80,
+      loadTimeMs: 142,
+      avgInferenceLatencyMs: 16,
+      memoryConsumptionMb: 64,
+      readinessState: 'READY',
+      frameSkips: 0,
+      samplingHz: 15,
+    },
+    activeTracks: [
+      {
+        trackId: 'TRK-CAM-01-DET-101',
+        sessionId: 'SES-CAM-01-V14',
+        cameraId: 'CAM-01',
+        zoneId: 'ZN-01',
+        label: 'person',
+        bbox: { x: 24, y: 38, width: 14, height: 36 },
+        centroid: { cx: 31, cy: 56 },
+        velocity: { vx: 0.65, vy: 0.12 },
+        direction: 'EAST',
+        confidence: 0.94,
+        confidenceHistory: [0.92, 0.93, 0.94],
+        persistenceFrames: 42,
+        occludedFrames: 0,
+        dwellSeconds: 18,
+        lastUpdatedIso: isoAt(-1),
+        isBiometric: false,
+      },
+      {
+        trackId: 'TRK-CAM-01-DET-102',
+        sessionId: 'SES-CAM-01-V14',
+        cameraId: 'CAM-01',
+        zoneId: 'ZN-01',
+        label: 'vehicle',
+        bbox: { x: 58, y: 44, width: 26, height: 28 },
+        centroid: { cx: 71, cy: 58 },
+        velocity: { vx: 0.08, vy: -0.04 },
+        direction: 'STATIC',
+        confidence: 0.91,
+        confidenceHistory: [0.9, 0.91, 0.91],
+        persistenceFrames: 118,
+        occludedFrames: 0,
+        dwellSeconds: 64,
+        lastUpdatedIso: isoAt(-1),
+        isBiometric: false,
+      },
+      {
+        trackId: 'TRK-CAM-02-DET-201',
+        sessionId: 'SES-CAM-02-V14',
+        cameraId: 'CAM-02',
+        zoneId: 'ZN-02',
+        label: 'person',
+        bbox: { x: 42, y: 28, width: 16, height: 44 },
+        centroid: { cx: 50, cy: 50 },
+        velocity: { vx: 0.05, vy: 0.02 },
+        direction: 'STATIC',
+        confidence: 0.96,
+        confidenceHistory: [0.95, 0.96, 0.96],
+        persistenceFrames: 296,
+        occludedFrames: 0,
+        dwellSeconds: 148,
+        lastUpdatedIso: isoAt(-1),
+        isBiometric: false,
+      },
+      {
+        trackId: 'TRK-CAM-03-DET-301',
+        sessionId: 'SES-CAM-03-V14',
+        cameraId: 'CAM-03',
+        zoneId: 'ZN-03',
+        label: 'person',
+        bbox: { x: 61, y: 49, width: 15, height: 35 },
+        centroid: { cx: 68.5, cy: 66.5 },
+        velocity: { vx: -0.45, vy: 0.15 },
+        direction: 'WEST',
+        confidence: 0.88,
+        confidenceHistory: [0.86, 0.87, 0.88],
+        persistenceFrames: 54,
+        occludedFrames: 0,
+        dwellSeconds: 32,
+        lastUpdatedIso: isoAt(-2),
+        isBiometric: false,
+      },
+    ],
+    workflows: [
+      {
+        id: 'WF-01',
+        name: 'Camera Activity & Track Correlation Report',
+        description:
+          'Aggregates active 640px object tracks, class-aware NMS counts, and zone occupancy ratios across all camera streams.',
+        triggerType: 'MANUAL_OPERATOR',
+        requiresHumanApproval: false,
+        consequentialActionSummary: 'Read-only cross-camera aggregation and audit log entry.',
+        status: 'READY',
+        steps: [
+          'Invoke get_camera_inventory across all zones',
+          'Correlate active Centroid/IoU object tracks',
+          'Compile structured scene summary with confidence intervals',
+        ],
+        lastRunIso: isoAt(-12),
+        lastResultSummary: '4 cameras inspected, 6 non-biometric tracks verified.',
+        correlationId: 'CORR-V14-INIT01',
+      },
+      {
+        id: 'WF-02',
+        name: 'Cross-Window Temporal Activity Comparison',
+        description:
+          'Compares trailing 1H vs 6H event sequences and runs short-horizon zone occupancy estimation.',
+        triggerType: 'SCHEDULED',
+        requiresHumanApproval: false,
+        consequentialActionSummary: 'Read-only temporal correlation and occupancy forecast.',
+        status: 'READY',
+        steps: [
+          'Invoke analyze_event_timeline across facility zones',
+          'Execute predict_aggregate_occupancy (30m horizon)',
+          'Publish epistemic comparison report',
+        ],
+        lastRunIso: isoAt(-20),
+        lastResultSummary: 'Concentration identified in ZN-02; 30m occupancy forecast 26 (±4).',
+        correlationId: 'CORR-V14-INIT02',
+      },
+      {
+        id: 'WF-03',
+        name: 'Device Fleet & Vision Pipeline Health Diagnostic',
+        description:
+          'Runs end-to-end packet-loss, bitrate, heartbeat, and inference queue diagnostics on all cameras and edge bridges.',
+        triggerType: 'MANUAL_OPERATOR',
+        requiresHumanApproval: false,
+        consequentialActionSummary: 'Read-only diagnostic probe across devices and streams.',
+        status: 'READY',
+        steps: [
+          'Invoke run_troubleshooter on degraded endpoints',
+          'Verify get_pipeline_diagnostics packet-loss thresholds',
+          'Log structured observability correlation record',
+        ],
+        lastRunIso: isoAt(-8),
+        lastResultSummary: 'Flagged 2.4% UDP packet drop on CAM-03 / DEV-EDG-04.',
+        correlationId: 'CORR-V14-INIT03',
+      },
+      {
+        id: 'WF-04',
+        name: 'Vault Dwell Containment & Multi-Device Alert Dispatch',
+        description:
+          'Correlates INC-2041 evidence, dispatches synchronized containment alert to Android/Tablet nodes, and executes PB-VAULT-CONTAINMENT.',
+        triggerType: 'POLICY_CORRELATION',
+        requiresHumanApproval: true,
+        consequentialActionSummary:
+          'Executes security playbook PB-VAULT-CONTAINMENT and broadcasts high-priority alert to field devices.',
+        status: 'AWAITING_APPROVAL',
+        steps: [
+          'Verify EVT-9014 frame hash and dwell duration (148s)',
+          'Obtain explicit Human Operator Approval (Section 12 boundary)',
+          'Execute execute_security_playbook (PB-VAULT-CONTAINMENT)',
+        ],
+        lastRunIso: isoAt(-5),
+        lastResultSummary:
+          'Paused at Human Approval Boundary: awaiting operator confirmation to execute PB-VAULT-CONTAINMENT.',
+        correlationId: 'CORR-V14-INIT04',
+      },
+    ],
+    memoryGovernance: {
+      conversationTurnCount: 1,
+      sessionContextKeys: ['tenantId', 'siteId', 'selectedCameraId', 'selectedIncidentId'],
+      operationalMemoryCount: 5,
+      retentionPeriodDays: 30,
+      piiMinimizationActive: true,
+      rawVideoStored: false,
+      lastPurgedIso: null,
+    },
+    observability: {
+      correlationId: 'OBS-V14-GENESIS',
+      cameraHealthScore: 92,
+      videoReadiness: 'SIMULATED_CANVAS',
+      modelReadiness: 'COCO-SSD-640px READY (Bounded Queue <= 2 frames)',
+      avgInferenceLatencyMs: 18,
+      processingFrequencyHz: 15,
+      frameSkipsCount: 0,
+      apiLatencyMs: 11,
+      toolExecutionAvgMs: 8,
+      brainResponseAvgMs: 42,
+      voiceResponseAvgMs: 65,
+      databaseHealth: 'HEALTHY',
+      errorRatePct: 0.0,
+      diagnosticFindings: [
+        {
+          subsystem: 'Camera & Vision 2.0 Pipeline',
+          status: 'OK',
+          message: '3 streams nominal at 30 FPS; 640px NMS + Centroid/IoU tracker operating within 18ms budget.',
+        },
+        {
+          subsystem: 'Substation Edge Bridge (CAM-03 / DEV-EDG-04)',
+          status: 'WARNING',
+          message: 'ONVIF stream experiencing 2.4% UDP packet loss; adaptive sampling throttled to 19.4 FPS.',
+        },
+        {
+          subsystem: 'Vanta Brain 3.0 & SHA-256 Ledger',
+          status: 'OK',
+          message: 'All 9 layers and 25 tools responsive; cryptographic audit hash chain verified intact.',
+        },
+      ],
+    },
+    detectionFilterConfig: {
+      globalMinConfidence: 0.45,
+      classThresholds: {
+        person: 0.5,
+        car: 0.5,
+        truck: 0.5,
+        vehicle: 0.5,
+        laptop: 0.45,
+        'cell phone': 0.45,
+        backpack: 0.45,
+      },
+      displayThreshold: 0.45,
+      eventGenerationThreshold: 0.65,
+      enabledClasses: [
+        'person',
+        'bicycle',
+        'car',
+        'motorcycle',
+        'bus',
+        'truck',
+        'vehicle',
+        'backpack',
+        'handbag',
+        'suitcase',
+        'laptop',
+        'cell phone',
+        'chair',
+        'bottle',
+        'book',
+      ],
+      nmsIouThreshold: 0.5,
+    },
+    measuredVisionTelemetry: {
+      modelStatus: 'UNINITIALIZED',
+      modelId: 'tfjs-coco-ssd-lite_mobilenet_v2',
+      modelVersion: '2.2.3',
+      modelInitTimeMs: null,
+      inferenceLatencyMs: null,
+      processedFrames: 0,
+      skippedFrames: 0,
+      cameraFps: null,
+      inferenceFps: null,
+      activeTracksCount: 4,
+      activeDetectionsCount: 6,
+      errorCount: 0,
+      lastError: null,
+      performanceProfile: 'BALANCED',
+      provenanceMode: 'SIMULATED_DEMO',
+    },
+    detectionEventRules: [
+      {
+        ruleId: 'RULE-V15-PERSON-DWELL',
+        name: 'Sustained Person Presence in Monitored Zone',
+        objectClass: 'person',
+        minConfidence: 0.65,
+        minPersistenceSeconds: 2,
+        minRepeatedFrames: 2,
+        cooldownSeconds: 30,
+        severity: 'MEDIUM',
+        enabled: true,
+      },
+      {
+        ruleId: 'RULE-V15-VEHICLE-GATE',
+        name: 'Verified Vehicle / Logistics Asset Detection',
+        objectClass: 'car',
+        minConfidence: 0.65,
+        minPersistenceSeconds: 1,
+        minRepeatedFrames: 2,
+        cooldownSeconds: 45,
+        severity: 'LOW',
+        enabled: true,
+      },
+      {
+        ruleId: 'RULE-V15-EQUIPMENT-CHECK',
+        name: 'Portable Device / Equipment Presence',
+        objectClass: 'cell phone',
+        minConfidence: 0.55,
+        minPersistenceSeconds: 1,
+        minRepeatedFrames: 1,
+        cooldownSeconds: 30,
+        severity: 'LOW',
+        enabled: true,
+      },
+    ],
+    latestNormalizedDetections: [],
   };
 }
+

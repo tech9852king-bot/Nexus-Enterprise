@@ -1,0 +1,2303 @@
+{
+  "version": "15.0.0",
+  "codename": "VANTA NEXUS",
+  "tenant": {
+    "tenantId": "TENANT-VANTA-01",
+    "organizationName": "Vanta Global Critical Infrastructure",
+    "siteId": "SITE-MUM-DC1",
+    "siteName": "Apex Hyperscale Data Center & Command Hub",
+    "userId": "USR-ARCH-01",
+    "userName": "Aarav Mehta",
+    "userEmail": "tech9852king@gmail.com",
+    "role": "ADMIN",
+    "permissions": [
+      "cameras:read",
+      "cameras:stream",
+      "devices:manage",
+      "incidents:transition",
+      "policies:write",
+      "brain:execute_tools",
+      "audit:verify"
+    ]
+  },
+  "syncRevision": 21,
+  "lastCloudSyncIso": "2026-11-16T14:18:43.694Z",
+  "connectedClients": 2,
+  "cameras": [
+    {
+      "id": "CAM-01",
+      "tenantId": "TENANT-VANTA-01",
+      "name": "North Perimeter Gate Alpha",
+      "zoneId": "ZN-01",
+      "zoneName": "North Logistics & Perimeter Gate",
+      "protocol": "ONVIF",
+      "connectorState": "Simulated",
+      "isSimulatedStream": true,
+      "resolution": "1920x1080 (640px CV)",
+      "fps": 30,
+      "inferenceLatencyMs": 1878,
+      "packetLossPct": 0.1,
+      "bitrateKbps": 4200,
+      "lastHeartbeatIso": "2026-11-16T14:18:43.694Z",
+      "occupancyCount": 1,
+      "maxCapacity": 20,
+      "coordinates": {
+        "x": 18,
+        "y": 24,
+        "fovAngle": 75,
+        "heading": 45
+      },
+      "activeDetections": [
+        {
+          "id": "DET-101",
+          "label": "person",
+          "confidence": 0.94,
+          "x": 24,
+          "y": 38,
+          "width": 14,
+          "height": 36,
+          "dwellSeconds": 18,
+          "zoneId": "ZN-01"
+        },
+        {
+          "id": "DET-102",
+          "label": "vehicle",
+          "confidence": 0.91,
+          "x": 58,
+          "y": 44,
+          "width": 26,
+          "height": 28,
+          "dwellSeconds": 64,
+          "zoneId": "ZN-01"
+        }
+      ]
+    },
+    {
+      "id": "CAM-02",
+      "tenantId": "TENANT-VANTA-01",
+      "name": "Server Vault Corridor B2",
+      "zoneId": "ZN-02",
+      "zoneName": "Restricted Server Vault Hall B",
+      "protocol": "RTSP",
+      "connectorState": "Simulated",
+      "isSimulatedStream": true,
+      "resolution": "2560x1440 (640px CV)",
+      "fps": 30,
+      "inferenceLatencyMs": 14,
+      "packetLossPct": 0,
+      "bitrateKbps": 5800,
+      "lastHeartbeatIso": "2026-11-15T14:44:00.000Z",
+      "occupancyCount": 2,
+      "maxCapacity": 4,
+      "coordinates": {
+        "x": 54,
+        "y": 30,
+        "fovAngle": 65,
+        "heading": 180
+      },
+      "activeDetections": [
+        {
+          "id": "DET-201",
+          "label": "person",
+          "confidence": 0.96,
+          "x": 42,
+          "y": 28,
+          "width": 16,
+          "height": 44,
+          "dwellSeconds": 148,
+          "zoneId": "ZN-02"
+        }
+      ]
+    },
+    {
+      "id": "CAM-03",
+      "tenantId": "TENANT-VANTA-01",
+      "name": "Substation Transformer Yard",
+      "zoneId": "ZN-03",
+      "zoneName": "High-Voltage Energy Substation",
+      "protocol": "ONVIF",
+      "connectorState": "Degraded",
+      "isSimulatedStream": true,
+      "resolution": "1920x1080 (640px CV)",
+      "fps": 19.4,
+      "inferenceLatencyMs": 28,
+      "packetLossPct": 2.4,
+      "bitrateKbps": 2150,
+      "lastHeartbeatIso": "2026-11-15T14:43:00.000Z",
+      "occupancyCount": 1,
+      "maxCapacity": 6,
+      "coordinates": {
+        "x": 78,
+        "y": 68,
+        "fovAngle": 80,
+        "heading": 270
+      },
+      "activeDetections": [
+        {
+          "id": "DET-301",
+          "label": "person",
+          "confidence": 0.88,
+          "x": 61,
+          "y": 49,
+          "width": 15,
+          "height": 35,
+          "dwellSeconds": 32,
+          "zoneId": "ZN-03"
+        }
+      ]
+    },
+    {
+      "id": "CAM-04",
+      "tenantId": "TENANT-VANTA-01",
+      "name": "SOC Operations Bridge East",
+      "zoneId": "ZN-04",
+      "zoneName": "Command & Operations Wing",
+      "protocol": "WEBRTC",
+      "connectorState": "Simulated",
+      "isSimulatedStream": true,
+      "resolution": "1920x1080 (640px CV)",
+      "fps": 30,
+      "inferenceLatencyMs": 15,
+      "packetLossPct": 0,
+      "bitrateKbps": 4600,
+      "lastHeartbeatIso": "2026-11-15T14:44:00.000Z",
+      "occupancyCount": 14,
+      "maxCapacity": 30,
+      "coordinates": {
+        "x": 30,
+        "y": 72,
+        "fovAngle": 90,
+        "heading": 0
+      },
+      "activeDetections": [
+        {
+          "id": "DET-401",
+          "label": "person",
+          "confidence": 0.95,
+          "x": 32,
+          "y": 36,
+          "width": 14,
+          "height": 38,
+          "dwellSeconds": 410,
+          "zoneId": "ZN-04"
+        },
+        {
+          "id": "DET-402",
+          "label": "person",
+          "confidence": 0.93,
+          "x": 54,
+          "y": 40,
+          "width": 14,
+          "height": 36,
+          "dwellSeconds": 380,
+          "zoneId": "ZN-04"
+        }
+      ]
+    }
+  ],
+  "devices": [
+    {
+      "id": "DEV-AND-01",
+      "tenantId": "TENANT-VANTA-01",
+      "name": "Field Patrol Android S24 Ultra",
+      "platform": "Android Node",
+      "ipAddress": "10.42.18.104",
+      "connectorState": "Connected",
+      "batteryPct": 84,
+      "cpuLoadPct": 31,
+      "memoryUsedMb": 2840,
+      "syncLatencyMs": 18,
+      "firmwareVersion": "VantaEdge-Android-11.0.2",
+      "lastSyncIso": "2026-11-15T14:45:00.000Z",
+      "pairedVia": "QR_TOKEN",
+      "authorized": true
+    },
+    {
+      "id": "DEV-TAB-02",
+      "tenantId": "TENANT-VANTA-01",
+      "name": "SOC Supervisor Tablet Pro",
+      "platform": "Tablet Command",
+      "ipAddress": "10.42.18.112",
+      "connectorState": "Connected",
+      "batteryPct": 92,
+      "cpuLoadPct": 24,
+      "memoryUsedMb": 3120,
+      "syncLatencyMs": 14,
+      "firmwareVersion": "VantaPad-OS-11.0.1",
+      "lastSyncIso": "2026-11-15T14:45:00.000Z",
+      "pairedVia": "QR_TOKEN",
+      "authorized": true
+    },
+    {
+      "id": "DEV-WIN-03",
+      "tenantId": "TENANT-VANTA-01",
+      "name": "Command Workstation Alpha-7",
+      "platform": "Windows Workstation",
+      "ipAddress": "10.42.10.22",
+      "connectorState": "Connected",
+      "batteryPct": null,
+      "cpuLoadPct": 42,
+      "memoryUsedMb": 11400,
+      "syncLatencyMs": 9,
+      "firmwareVersion": "VantaDesktop-Win64-11.0.0",
+      "lastSyncIso": "2026-11-15T14:45:00.000Z",
+      "pairedVia": "MTLS_CERT",
+      "authorized": true
+    },
+    {
+      "id": "DEV-EDG-04",
+      "tenantId": "TENANT-VANTA-01",
+      "name": "Substation Jetson Orin Bridge",
+      "platform": "IP Camera Bridge",
+      "ipAddress": "10.42.30.88",
+      "connectorState": "Degraded",
+      "batteryPct": null,
+      "cpuLoadPct": 78,
+      "memoryUsedMb": 6890,
+      "syncLatencyMs": 64,
+      "firmwareVersion": "VantaBridge-ARM64-11.0.0",
+      "lastSyncIso": "2026-11-15T14:43:00.000Z",
+      "pairedVia": "MTLS_CERT",
+      "authorized": true
+    }
+  ],
+  "pairingSessions": [
+    {
+      "tokenId": "PAIR-INIT901",
+      "pairingCode": "482910",
+      "tenantId": "TENANT-VANTA-01",
+      "targetPlatform": "Android Node",
+      "deviceName": "West Gate Patrol Handset #2",
+      "createdAtIso": "2026-11-15T14:42:00.000Z",
+      "expiresAtIso": "2026-11-15T14:52:00.000Z",
+      "status": "PENDING",
+      "qrPayload": "vantanexus://pair?tenant=TENANT-VANTA-01&token=PAIR-INIT901&code=482910&sig=9f81c24e0a1b77d2"
+    }
+  ],
+  "zones": [
+    {
+      "id": "ZN-01",
+      "tenantId": "TENANT-VANTA-01",
+      "name": "North Logistics & Perimeter Gate",
+      "floor": "Ground Level",
+      "building": "Perimeter Sector A",
+      "securityLevel": "CONTROLLED",
+      "currentOccupancy": 6,
+      "capacityLimit": 20,
+      "dwellThresholdSec": 180,
+      "activePolicyIds": [
+        "POL-02"
+      ],
+      "temperatureC": 24.2,
+      "powerDrawKw": 48.5,
+      "status": "NOMINAL",
+      "bounds": {
+        "x": 6,
+        "y": 8,
+        "width": 40,
+        "height": 38
+      }
+    },
+    {
+      "id": "ZN-02",
+      "tenantId": "TENANT-VANTA-01",
+      "name": "Restricted Server Vault Hall B",
+      "floor": "Sub-Level B2",
+      "building": "Core Compute Bunker",
+      "securityLevel": "RESTRICTED",
+      "currentOccupancy": 2,
+      "capacityLimit": 4,
+      "dwellThresholdSec": 120,
+      "activePolicyIds": [
+        "POL-01"
+      ],
+      "temperatureC": 18.6,
+      "powerDrawKw": 312.4,
+      "status": "ALERT",
+      "bounds": {
+        "x": 50,
+        "y": 8,
+        "width": 44,
+        "height": 42
+      }
+    },
+    {
+      "id": "ZN-03",
+      "tenantId": "TENANT-VANTA-01",
+      "name": "High-Voltage Energy Substation",
+      "floor": "Ground Level",
+      "building": "Power Yard East",
+      "securityLevel": "RESTRICTED",
+      "currentOccupancy": 1,
+      "capacityLimit": 6,
+      "dwellThresholdSec": 90,
+      "activePolicyIds": [
+        "POL-03"
+      ],
+      "temperatureC": 29.8,
+      "powerDrawKw": 184,
+      "status": "ELEVATED",
+      "bounds": {
+        "x": 50,
+        "y": 54,
+        "width": 44,
+        "height": 38
+      }
+    },
+    {
+      "id": "ZN-04",
+      "tenantId": "TENANT-VANTA-01",
+      "name": "Command & Operations Wing",
+      "floor": "Level 2",
+      "building": "Main Nexus Tower",
+      "securityLevel": "GENERAL",
+      "currentOccupancy": 14,
+      "capacityLimit": 30,
+      "dwellThresholdSec": 3600,
+      "activePolicyIds": [],
+      "temperatureC": 21.5,
+      "powerDrawKw": 64.2,
+      "status": "NOMINAL",
+      "bounds": {
+        "x": 6,
+        "y": 50,
+        "width": 40,
+        "height": 42
+      }
+    }
+  ],
+  "events": [
+    {
+      "id": "EVT-9014",
+      "tenantId": "TENANT-VANTA-01",
+      "cameraId": "CAM-02",
+      "cameraName": "Server Vault Corridor B2",
+      "deviceId": "DEV-WIN-03",
+      "zoneId": "ZN-02",
+      "zoneName": "Restricted Server Vault Hall B",
+      "timestampIso": "2026-11-15T14:39:00.000Z",
+      "category": "DWELL_THRESHOLD",
+      "severity": "HIGH",
+      "confidence": 0.96,
+      "provenance": "Simulated",
+      "summary": "Continuous dwell duration (148s) exceeded Restricted Vault policy threshold (120s) near Rack Row 4.",
+      "evidenceMetadata": {
+        "objectCount": 1,
+        "dwellSeconds": 148,
+        "modelVersion": "COCO-SSD-640px-v2.4",
+        "frameHash": "fcd73fb74a4edb28218a8d510f54e753e81a66d5cd87289c304fe4e9f5a52156"
+      },
+      "verified": true
+    },
+    {
+      "id": "EVT-9013",
+      "tenantId": "TENANT-VANTA-01",
+      "cameraId": "CAM-03",
+      "cameraName": "Substation Transformer Yard",
+      "deviceId": "DEV-EDG-04",
+      "zoneId": "ZN-03",
+      "zoneName": "High-Voltage Energy Substation",
+      "timestampIso": "2026-11-15T14:31:00.000Z",
+      "category": "DEVICE_DEGRADED",
+      "severity": "MEDIUM",
+      "confidence": 0.99,
+      "provenance": "Measured",
+      "summary": "ONVIF stream CAM-03 experienced 2.4% packet loss and elevated inference latency (28ms).",
+      "evidenceMetadata": {
+        "objectCount": 1,
+        "modelVersion": "VantaStreamMonitor-v11",
+        "frameHash": "75c96781a992e8f9e4864f6c38d3f10cc5dabdac7c19f215a6d99babacd77fcb"
+      },
+      "verified": true
+    },
+    {
+      "id": "EVT-9012",
+      "tenantId": "TENANT-VANTA-01",
+      "cameraId": "CAM-01",
+      "cameraName": "North Perimeter Gate Alpha",
+      "deviceId": "DEV-AND-01",
+      "zoneId": "ZN-01",
+      "zoneName": "North Logistics & Perimeter Gate",
+      "timestampIso": "2026-11-15T14:20:00.000Z",
+      "category": "PERIMETER_MOTION",
+      "severity": "LOW",
+      "confidence": 0.91,
+      "provenance": "Simulated",
+      "summary": "Authorized logistics vehicle and escort detected entering Bay 2.",
+      "evidenceMetadata": {
+        "objectCount": 2,
+        "dwellSeconds": 64,
+        "modelVersion": "COCO-SSD-640px-v2.4",
+        "frameHash": "451ec831d186bf311d619f8fcfb8d8c05e76936c52114e7d75b091a9be16fba1"
+      },
+      "verified": true
+    }
+  ],
+  "incidents": [
+    {
+      "id": "INC-2041",
+      "tenantId": "TENANT-VANTA-01",
+      "title": "Extended Dwell Threshold Exceeded in Server Vault Hall B",
+      "severity": "HIGH",
+      "status": "OPEN",
+      "zoneId": "ZN-02",
+      "zoneName": "Restricted Server Vault Hall B",
+      "cameraIds": [
+        "CAM-02"
+      ],
+      "relatedEventIds": [
+        "EVT-9014"
+      ],
+      "assignedTo": "Aarav Mehta (ADMIN)",
+      "createdAtIso": "2026-11-15T14:39:00.000Z",
+      "updatedAtIso": "2026-11-15T14:39:00.000Z",
+      "rootCauseHypothesis": "Unscheduled maintenance technician dwell exceeding 120s threshold in cold aisle B2 without linked change ticket.",
+      "recommendedPlaybook": "PB-VAULT-CONTAINMENT",
+      "timeline": [
+        {
+          "id": "TL-01",
+          "timestampIso": "2026-11-15T14:39:00.000Z",
+          "actor": "Policy Engine (POL-01)",
+          "toStatus": "OPEN",
+          "action": "Incident Automatically Created",
+          "note": "Triggered by EVT-9014 (148s dwell at 96% confidence in ZN-02).",
+          "verifiedEvidence": true
+        }
+      ]
+    },
+    {
+      "id": "INC-2040",
+      "tenantId": "TENANT-VANTA-01",
+      "title": "Substation ONVIF Bridge Packet Loss & Jitter",
+      "severity": "MEDIUM",
+      "status": "INVESTIGATING",
+      "zoneId": "ZN-03",
+      "zoneName": "High-Voltage Energy Substation",
+      "cameraIds": [
+        "CAM-03"
+      ],
+      "relatedEventIds": [
+        "EVT-9013"
+      ],
+      "assignedTo": "Priya Nair (SECURITY_OPERATOR)",
+      "createdAtIso": "2026-11-15T14:31:00.000Z",
+      "updatedAtIso": "2026-11-15T14:36:00.000Z",
+      "rootCauseHypothesis": "EMI interference or saturated uplink on Substation Jetson Orin Bridge (DEV-EDG-04) causing 2.4% UDP packet drop.",
+      "recommendedPlaybook": "PB-STREAM-STABILIZE",
+      "timeline": [
+        {
+          "id": "TL-02",
+          "timestampIso": "2026-11-15T14:31:00.000Z",
+          "actor": "Telemetry Monitor",
+          "toStatus": "OPEN",
+          "action": "Incident Created",
+          "note": "Packet loss crossed 2.0% threshold on CAM-03.",
+          "verifiedEvidence": true
+        },
+        {
+          "id": "TL-03",
+          "timestampIso": "2026-11-15T14:36:00.000Z",
+          "actor": "Priya Nair (SECURITY_OPERATOR)",
+          "fromStatus": "OPEN",
+          "toStatus": "INVESTIGATING",
+          "action": "Transitioned OPEN -> INVESTIGATING",
+          "note": "Initiated remote diagnostic check on DEV-EDG-04 network interface.",
+          "verifiedEvidence": true
+        }
+      ]
+    }
+  ],
+  "policies": [
+    {
+      "id": "POL-01",
+      "tenantId": "TENANT-VANTA-01",
+      "name": "Restricted Server Vault Dwell Governance",
+      "description": "Flags continuous person dwell > 120s in Sub-Level B2 Server Vault when confidence >= 85%.",
+      "targetZoneId": "ZN-02",
+      "targetZoneName": "Restricted Server Vault Hall B",
+      "enabled": true,
+      "conditions": {
+        "maxDwellSeconds": 120,
+        "requiredConfidence": 0.85
+      },
+      "severityOnMatch": "HIGH",
+      "autoCreateIncident": true,
+      "lastEvaluatedIso": "2026-11-15T14:44:00.000Z",
+      "matchCount24h": 3
+    },
+    {
+      "id": "POL-02",
+      "tenantId": "TENANT-VANTA-01",
+      "name": "Perimeter Gate Surge Capacity Monitor",
+      "description": "Generates medium operational signal when North Logistics Gate occupancy exceeds 15 concurrent entities.",
+      "targetZoneId": "ZN-01",
+      "targetZoneName": "North Logistics & Perimeter Gate",
+      "enabled": true,
+      "conditions": {
+        "minOccupancy": 15,
+        "requiredConfidence": 0.8
+      },
+      "severityOnMatch": "MEDIUM",
+      "autoCreateIncident": false,
+      "lastEvaluatedIso": "2026-11-15T14:44:00.000Z",
+      "matchCount24h": 1
+    },
+    {
+      "id": "POL-03",
+      "tenantId": "TENANT-VANTA-01",
+      "name": "High-Voltage Yard Restricted Hours Access",
+      "description": "Alerts on any verified human presence in High-Voltage Substation Yard during restricted maintenance hours.",
+      "targetZoneId": "ZN-03",
+      "targetZoneName": "High-Voltage Energy Substation",
+      "enabled": true,
+      "conditions": {
+        "minOccupancy": 1,
+        "restrictedHoursOnly": true,
+        "requiredConfidence": 0.85
+      },
+      "severityOnMatch": "CRITICAL",
+      "autoCreateIncident": true,
+      "lastEvaluatedIso": "2026-11-15T14:43:00.000Z",
+      "matchCount24h": 0
+    }
+  ],
+  "auditTrail": [
+    {
+      "id": "AUD-0001",
+      "sequenceNumber": 1,
+      "tenantId": "TENANT-VANTA-01",
+      "timestampIso": "2026-11-15T14:15:00.000Z",
+      "actorId": "USR-ARCH-01",
+      "actorRole": "ADMIN",
+      "category": "AUTH",
+      "action": "SYSTEM_BOOT_GENESIS",
+      "targetId": "VANTA-NEXUS-V11",
+      "outcome": "SUCCESS",
+      "details": "Initialized VantaVisionAI V11.0 cryptographic SHA-256 audit ledger and tenant isolation boundaries.",
+      "previousHash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "recordHash": "f2adef57f573381ace70d37a695638c1b2b797ffad20410f67aceef3b01dcc5f"
+    },
+    {
+      "id": "AUD-0002",
+      "sequenceNumber": 2,
+      "tenantId": "TENANT-VANTA-01",
+      "timestampIso": "2026-11-15T14:27:00.000Z",
+      "actorId": "USR-ARCH-01",
+      "actorRole": "ADMIN",
+      "category": "DEVICE_PAIRING",
+      "action": "DEVICE_HEARTBEAT_SYNC",
+      "targetId": "DEV-AND-01",
+      "outcome": "SUCCESS",
+      "details": "Verified mutual TLS + short-lived pairing session for Android Field Command node.",
+      "previousHash": "f2adef57f573381ace70d37a695638c1b2b797ffad20410f67aceef3b01dcc5f",
+      "recordHash": "f43cf973df89de6b4fb71555e436e9bc81450065b24446815fc6f3e09a9108f9"
+    },
+    {
+      "id": "AUD-0003",
+      "sequenceNumber": 3,
+      "tenantId": "TENANT-VANTA-01",
+      "timestampIso": "2026-11-15T14:39:00.000Z",
+      "actorId": "SYSTEM-POLICY-ENGINE",
+      "actorRole": "SECURITY_OPERATOR",
+      "category": "INCIDENT_STATE",
+      "action": "INCIDENT_OPENED:INC-2041",
+      "targetId": "INC-2041",
+      "outcome": "SUCCESS",
+      "details": "Policy POL-01 triggered elevated dwell alert in Server Vault Corridor (Zone ZN-02).",
+      "previousHash": "f43cf973df89de6b4fb71555e436e9bc81450065b24446815fc6f3e09a9108f9",
+      "recordHash": "1952eb442afb6d414b454590965382cf39e0106d396612f6f871ce53c4093c39"
+    },
+    {
+      "id": "AUD-0004",
+      "sequenceNumber": 4,
+      "tenantId": "TENANT-VANTA-01",
+      "timestampIso": "2026-11-16T06:46:15.797Z",
+      "actorId": "USR-ARCH-01",
+      "actorRole": "ADMIN",
+      "category": "BRAIN_TOOL",
+      "action": "TOOL_EXEC:list_incidents",
+      "targetId": "T12",
+      "outcome": "SUCCESS",
+      "details": "Found 2 incident(s): INC-2041 [HIGH/OPEN] \"Extended Dwell Threshold Exceeded in Server Vault Hall B\"; INC-2040 [MEDIUM/INVESTIGATING] \"Substation ONVIF Bridge Packet Loss & Jitter\".",
+      "previousHash": "1952eb442afb6d414b454590965382cf39e0106d396612f6f871ce53c4093c39",
+      "recordHash": "bf88db742a7e3c77e080446277be5d51b2c53f3a9cf75c9a01a248430a18ce44"
+    },
+    {
+      "id": "AUD-0005",
+      "sequenceNumber": 5,
+      "tenantId": "TENANT-VANTA-01",
+      "timestampIso": "2026-11-16T06:46:15.798Z",
+      "actorId": "USR-ARCH-01",
+      "actorRole": "ADMIN",
+      "category": "BRAIN_TOOL",
+      "action": "TOOL_EXEC:explain_incident",
+      "targetId": "T13",
+      "outcome": "SUCCESS",
+      "details": "Incident INC-2041 (Extended Dwell Threshold Exceeded in Server Vault Hall B) in Restricted Server Vault Hall B: Status=OPEN, Severity=HIGH. Correlated with 1 verified event(s). Hypothesis: Unscheduled maintenance technician dwell exceeding 120s threshold in cold aisle B2 without linked change ticket.",
+      "previousHash": "bf88db742a7e3c77e080446277be5d51b2c53f3a9cf75c9a01a248430a18ce44",
+      "recordHash": "ff54bef0ead975920d588a30c3b5b9400dcf91a57aa0996261602f747be9ef2e"
+    },
+    {
+      "id": "AUD-0006",
+      "sequenceNumber": 6,
+      "tenantId": "TENANT-VANTA-01",
+      "timestampIso": "2026-11-16T06:46:15.799Z",
+      "actorId": "USR-ARCH-01",
+      "actorRole": "ADMIN",
+      "category": "BRAIN_TOOL",
+      "action": "TOOL_EXEC:get_camera_inventory",
+      "targetId": "T06",
+      "outcome": "SUCCESS",
+      "details": "Retrieved 4 camera stream(s): CAM-01 (North Perimeter Gate Alpha - Connected), CAM-02 (Server Vault Corridor B2 - Simulated), CAM-03 (Substation Transformer Yard - Degraded), CAM-04 (SOC Operations Bridge East - Simulated).",
+      "previousHash": "ff54bef0ead975920d588a30c3b5b9400dcf91a57aa0996261602f747be9ef2e",
+      "recordHash": "16b163b2c6589792a1dd5c6e32128879752da97e5e9e4e9ae86ebb8791434772"
+    },
+    {
+      "id": "AUD-0007",
+      "sequenceNumber": 7,
+      "tenantId": "TENANT-VANTA-01",
+      "timestampIso": "2026-11-16T06:46:24.355Z",
+      "actorId": "USR-ARCH-01",
+      "actorRole": "ADMIN",
+      "category": "BRAIN_TOOL",
+      "action": "TOOL_EXEC:explain_incident",
+      "targetId": "T13",
+      "outcome": "SUCCESS",
+      "details": "Incident INC-2041 (Extended Dwell Threshold Exceeded in Server Vault Hall B) in Restricted Server Vault Hall B: Status=OPEN, Severity=HIGH. Correlated with 1 verified event(s). Hypothesis: Unscheduled maintenance technician dwell exceeding 120s threshold in cold aisle B2 without linked change ticket.",
+      "previousHash": "16b163b2c6589792a1dd5c6e32128879752da97e5e9e4e9ae86ebb8791434772",
+      "recordHash": "1510246a363f4062cdb6d452f0cc86e1beafc2a6c6ab2409d73d632f5ab969f0"
+    },
+    {
+      "id": "AUD-0008",
+      "sequenceNumber": 8,
+      "tenantId": "TENANT-VANTA-01",
+      "timestampIso": "2026-11-16T06:46:24.355Z",
+      "actorId": "USR-ARCH-01",
+      "actorRole": "ADMIN",
+      "category": "BRAIN_TOOL",
+      "action": "TOOL_EXEC:execute_security_playbook",
+      "targetId": "T23",
+      "outcome": "SUCCESS",
+      "details": "Executed security playbook PB-VAULT-CONTAINMENT: 3/3 verification steps completed and synced across connected devices.",
+      "previousHash": "1510246a363f4062cdb6d452f0cc86e1beafc2a6c6ab2409d73d632f5ab969f0",
+      "recordHash": "a0e798bf927604365cdec65cf2001117ee392944b6b65964692fe99a6c63f2a5"
+    },
+    {
+      "id": "AUD-0009",
+      "sequenceNumber": 9,
+      "tenantId": "TENANT-VANTA-01",
+      "timestampIso": "2026-11-16T06:46:24.355Z",
+      "actorId": "USR-ARCH-01",
+      "actorRole": "ADMIN",
+      "category": "BRAIN_TOOL",
+      "action": "WORKFLOW_COMPLETED:WF-04",
+      "targetId": "WF-04",
+      "outcome": "SUCCESS",
+      "details": "Correlation CORR-MWIWH5R8: Vault Dwell Containment & Multi-Device Alert Dispatch completed.",
+      "previousHash": "a0e798bf927604365cdec65cf2001117ee392944b6b65964692fe99a6c63f2a5",
+      "recordHash": "5a15f623be1994f6d9b02f69e3b27dbe27b774a20205c454eef1edfb3114370d"
+    }
+  ],
+  "conversations": [
+    {
+      "id": "MSG-INIT-1",
+      "conversationId": "CONV-PRIMARY",
+      "role": "assistant",
+      "modality": "TEXT",
+      "language": "en",
+      "timestampIso": "2026-11-15T14:40:00.000Z",
+      "content": "Vanta Brain V11.0 and ALEANA Voice Intelligence initialized. Shared tenant context bound to Apex Hyperscale Data Center (Rev #14). 25 permission-controlled tools online. How can I assist your operations today?",
+      "directAnswer": "Vanta Nexus Command Center is online at Sync Revision #14. 2 active incidents require review (INC-2041 in Server Vault Hall B and INC-2040 in Substation Yard).",
+      "keyFindings": [
+        "4 Camera streams active (3 Simulated telemetry streams, 1 Degraded stream CAM-03)",
+        "4 Cross-platform devices synced via Cloud Event Bus (Android, Tablet, Windows, Edge Bridge)",
+        "SHA-256 Cryptographic Audit Ledger verified across 3 genesis blocks"
+      ],
+      "evidenceCitations": [
+        "INC-2041 (ZN-02 · HIGH)",
+        "EVT-9014 (CAM-02 · 148s dwell)"
+      ],
+      "uncertaintyDisclosure": "Pre-configured facility cameras are operating in labeled Simulated Telemetry mode until a live local camera or WebRTC endpoint is enabled.",
+      "recommendedNextAction": "Ask Vanta Brain or speak to ALEANA in English, Hindi, or Hinglish to inspect INC-2041 or run pipeline diagnostics.",
+      "modelUsed": "vanta-brain-9layer-v11"
+    },
+    {
+      "id": "MSG-USR-MWIWGZ5G",
+      "conversationId": "CONV-PRIMARY",
+      "role": "user",
+      "modality": "TEXT",
+      "language": "en",
+      "timestampIso": "2026-11-16T06:46:15.796Z",
+      "content": "Abhi kitne cameras aur incidents active hain dikhao"
+    },
+    {
+      "id": "MSG-AI-MWIWH5CQ",
+      "conversationId": "CONV-PRIMARY",
+      "role": "assistant",
+      "modality": "TEXT",
+      "language": "en",
+      "timestampIso": "2026-11-16T06:46:23.834Z",
+      "content": "Currently, 4 camera streams are active across TENANT-VANTA-01—1 Connected, 2 Simulated, and 1 Degraded—alongside 2 active incidents: 1 HIGH severity OPEN incident (INC-2041) and 1 MEDIUM severity INVESTIGATING incident (INC-2040).",
+      "directAnswer": "Currently, 4 camera streams are active across TENANT-VANTA-01—1 Connected, 2 Simulated, and 1 Degraded—alongside 2 active incidents: 1 HIGH severity OPEN incident (INC-2041) and 1 MEDIUM severity INVESTIGATING incident (INC-2040).",
+      "keyFindings": [
+        "Camera Fleet (4 active streams): CAM-01 (North Perimeter Gate Alpha) is Connected at 30 fps (0.1% packet loss); CAM-02 (Server Vault Corridor B2) and CAM-04 (SOC Operations Bridge East) are Simulated at 30 fps (0% packet loss); CAM-03 (Substation Transformer Yard) is Degraded at 19.4 fps with 2.4% packet loss.",
+        "INC-2041 [HIGH / OPEN]: Triggered on CAM-02 in ZN-02 (Restricted Server Vault Hall B) by EVT-9014 after a 148s dwell exceeded the 120s policy threshold (96% confidence); assigned to Aarav Mehta (ADMIN).",
+        "INC-2040 [MEDIUM / INVESTIGATING]: Triggered on CAM-03 in ZN-03 (High-Voltage Energy Substation) due to 2.4% UDP packet drop on Substation Jetson Orin Bridge (DEV-EDG-04); currently under remote diagnostic review by Priya Nair (SECURITY_OPERATOR)."
+      ],
+      "evidenceCitations": [
+        "INC-2041 (Restricted Server Vault Hall B · HIGH)",
+        "INC-2040 (High-Voltage Energy Substation · MEDIUM)",
+        "EVT-9014 (CAM-02 · FrameHash fcd73fb7)",
+        "EVT-9013 (CAM-03 · FrameHash 75c96781)"
+      ],
+      "epistemicBreakdown": [
+        {
+          "category": "Verified Fact",
+          "statement": "System is at Sync Revision #16 with 6 verified SHA-256 audit blocks and 2 open incident(s).",
+          "sourceRef": "Canonical State Store · Audit Head 16b163b2c6"
+        },
+        {
+          "category": "Calculated Value",
+          "statement": "Aggregate facility occupancy across 4 zones is 23 entities; average CV inference latency is 17ms.",
+          "sourceRef": "Zone Telemetry Aggregation (ZN-01, ZN-02, ZN-03, ZN-04)"
+        },
+        {
+          "category": "Estimate",
+          "statement": "30-minute short-horizon occupancy projection is 26 (±4 occupants, 90% CI).",
+          "sourceRef": "Exponential Smoothing Forecaster (T20)"
+        },
+        {
+          "category": "Model Interpretation",
+          "statement": "Unscheduled maintenance technician dwell exceeding 120s threshold in cold aisle B2 without linked change ticket.",
+          "sourceRef": "INC-2041"
+        }
+      ],
+      "uncertaintyDisclosure": "Camera feeds labeled SIMULATED use deterministic telemetry replay; live browser webcam streams use Measured local frame analysis. Policy matches are operational signals requiring operator verification.",
+      "recommendedNextAction": "Prioritize INC-2041 by executing playbook PB-VAULT-CONTAINMENT on CAM-02 to verify the unscheduled 148s dwell in Server Vault Hall B (ZN-02), while tracking Priya Nair's ongoing DEV-EDG-04 diagnostics under PB-STREAM-STABILIZE for degraded stream CAM-03.",
+      "layerTraces": [
+        {
+          "layerNumber": 1,
+          "layerName": "Intent Intelligence",
+          "status": "COMPLETED",
+          "latencyMs": 4,
+          "summary": "Classified operational query (TEXT, lang=en) targeting tools: list_incidents, explain_incident, get_camera_inventory.",
+          "evidenceRefs": [
+            "INTENT-CLASSIFIER-V11"
+          ]
+        },
+        {
+          "layerNumber": 2,
+          "layerName": "Context Intelligence",
+          "status": "COMPLETED",
+          "latencyMs": 5,
+          "summary": "Bound tenant scope TENANT-VANTA-01 (Apex Hyperscale Data Center & Command Hub) for role ADMIN.",
+          "evidenceRefs": [
+            "TENANT-VANTA-01",
+            "SITE-MUM-DC1"
+          ]
+        },
+        {
+          "layerNumber": 3,
+          "layerName": "Data Intelligence",
+          "status": "COMPLETED",
+          "latencyMs": 9,
+          "summary": "Retrieved 3 live tool dataset(s) at sync revision #16.",
+          "evidenceRefs": [
+            "EXEC-MWIWGZ5H-62",
+            "EXEC-MWIWGZ5I-54",
+            "EXEC-MWIWGZ5J-29"
+          ]
+        },
+        {
+          "layerNumber": 4,
+          "layerName": "Vision Intelligence",
+          "status": "COMPLETED",
+          "latencyMs": 7,
+          "summary": "Evaluated 4 camera streams (1 degraded) and 23 active tracked occupants.",
+          "evidenceRefs": [
+            "CAM-01",
+            "CAM-02",
+            "CAM-03",
+            "CAM-04"
+          ]
+        },
+        {
+          "layerNumber": 5,
+          "layerName": "Temporal Intelligence",
+          "status": "COMPLETED",
+          "latencyMs": 6,
+          "summary": "Correlated 3 timestamped events across 4 zones.",
+          "evidenceRefs": [
+            "EVT-9014",
+            "EVT-9013",
+            "EVT-9012"
+          ]
+        },
+        {
+          "layerNumber": 6,
+          "layerName": "Policy & Risk Intelligence",
+          "status": "COMPLETED",
+          "latencyMs": 5,
+          "summary": "Assessed 3 active compound policies; 2 incident(s) require operator attention.",
+          "evidenceRefs": [
+            "POL-01",
+            "POL-02",
+            "POL-03"
+          ]
+        },
+        {
+          "layerNumber": 7,
+          "layerName": "Reasoning & Orchestration",
+          "status": "COMPLETED",
+          "latencyMs": 11,
+          "summary": "Synthesized outputs from list_incidents -> explain_incident -> get_camera_inventory.",
+          "evidenceRefs": [
+            "list_incidents",
+            "explain_incident",
+            "get_camera_inventory"
+          ]
+        },
+        {
+          "layerNumber": 8,
+          "layerName": "Explanation Intelligence",
+          "status": "COMPLETED",
+          "latencyMs": 6,
+          "summary": "Constructed evidence-grounded response separating Measured telemetry from Inferred hypotheses.",
+          "evidenceRefs": [
+            "INC-2041",
+            "INC-2040"
+          ]
+        },
+        {
+          "layerNumber": 9,
+          "layerName": "Governance Intelligence",
+          "status": "COMPLETED",
+          "latencyMs": 4,
+          "summary": "Enforced RBAC (ADMIN) and appended SHA-256 audit block #6.",
+          "evidenceRefs": [
+            "AUD-0006"
+          ]
+        }
+      ],
+      "toolExecutions": [
+        {
+          "executionId": "EXEC-MWIWGZ5H-62",
+          "toolName": "list_incidents",
+          "category": "EVENT_INCIDENT",
+          "timestampIso": "2026-11-16T06:46:15.797Z",
+          "actor": "Aarav Mehta (ADMIN)",
+          "arguments": {},
+          "status": "EXECUTED",
+          "latencyMs": 6,
+          "resultSummary": "Found 2 incident(s): INC-2041 [HIGH/OPEN] \"Extended Dwell Threshold Exceeded in Server Vault Hall B\"; INC-2040 [MEDIUM/INVESTIGATING] \"Substation ONVIF Bridge Packet Loss & Jitter\".",
+          "dataPayload": {
+            "incidents": [
+              {
+                "id": "INC-2041",
+                "tenantId": "TENANT-VANTA-01",
+                "title": "Extended Dwell Threshold Exceeded in Server Vault Hall B",
+                "severity": "HIGH",
+                "status": "OPEN",
+                "zoneId": "ZN-02",
+                "zoneName": "Restricted Server Vault Hall B",
+                "cameraIds": [
+                  "CAM-02"
+                ],
+                "relatedEventIds": [
+                  "EVT-9014"
+                ],
+                "assignedTo": "Aarav Mehta (ADMIN)",
+                "createdAtIso": "2026-11-15T14:39:00.000Z",
+                "updatedAtIso": "2026-11-15T14:39:00.000Z",
+                "rootCauseHypothesis": "Unscheduled maintenance technician dwell exceeding 120s threshold in cold aisle B2 without linked change ticket.",
+                "recommendedPlaybook": "PB-VAULT-CONTAINMENT",
+                "timeline": [
+                  {
+                    "id": "TL-01",
+                    "timestampIso": "2026-11-15T14:39:00.000Z",
+                    "actor": "Policy Engine (POL-01)",
+                    "toStatus": "OPEN",
+                    "action": "Incident Automatically Created",
+                    "note": "Triggered by EVT-9014 (148s dwell at 96% confidence in ZN-02).",
+                    "verifiedEvidence": true
+                  }
+                ]
+              },
+              {
+                "id": "INC-2040",
+                "tenantId": "TENANT-VANTA-01",
+                "title": "Substation ONVIF Bridge Packet Loss & Jitter",
+                "severity": "MEDIUM",
+                "status": "INVESTIGATING",
+                "zoneId": "ZN-03",
+                "zoneName": "High-Voltage Energy Substation",
+                "cameraIds": [
+                  "CAM-03"
+                ],
+                "relatedEventIds": [
+                  "EVT-9013"
+                ],
+                "assignedTo": "Priya Nair (SECURITY_OPERATOR)",
+                "createdAtIso": "2026-11-15T14:31:00.000Z",
+                "updatedAtIso": "2026-11-15T14:36:00.000Z",
+                "rootCauseHypothesis": "EMI interference or saturated uplink on Substation Jetson Orin Bridge (DEV-EDG-04) causing 2.4% UDP packet drop.",
+                "recommendedPlaybook": "PB-STREAM-STABILIZE",
+                "timeline": [
+                  {
+                    "id": "TL-02",
+                    "timestampIso": "2026-11-15T14:31:00.000Z",
+                    "actor": "Telemetry Monitor",
+                    "toStatus": "OPEN",
+                    "action": "Incident Created",
+                    "note": "Packet loss crossed 2.0% threshold on CAM-03.",
+                    "verifiedEvidence": true
+                  },
+                  {
+                    "id": "TL-03",
+                    "timestampIso": "2026-11-15T14:36:00.000Z",
+                    "actor": "Priya Nair (SECURITY_OPERATOR)",
+                    "fromStatus": "OPEN",
+                    "toStatus": "INVESTIGATING",
+                    "action": "Transitioned OPEN -> INVESTIGATING",
+                    "note": "Initiated remote diagnostic check on DEV-EDG-04 network interface.",
+                    "verifiedEvidence": true
+                  }
+                ]
+              }
+            ]
+          },
+          "provenance": "Measured"
+        },
+        {
+          "executionId": "EXEC-MWIWGZ5I-54",
+          "toolName": "explain_incident",
+          "category": "EVENT_INCIDENT",
+          "timestampIso": "2026-11-16T06:46:15.798Z",
+          "actor": "Aarav Mehta (ADMIN)",
+          "arguments": {},
+          "status": "EXECUTED",
+          "latencyMs": 6,
+          "resultSummary": "Incident INC-2041 (Extended Dwell Threshold Exceeded in Server Vault Hall B) in Restricted Server Vault Hall B: Status=OPEN, Severity=HIGH. Correlated with 1 verified event(s). Hypothesis: Unscheduled maintenance technician dwell exceeding 120s threshold in cold aisle B2 without linked change ticket.",
+          "dataPayload": {
+            "incident": {
+              "id": "INC-2041",
+              "tenantId": "TENANT-VANTA-01",
+              "title": "Extended Dwell Threshold Exceeded in Server Vault Hall B",
+              "severity": "HIGH",
+              "status": "OPEN",
+              "zoneId": "ZN-02",
+              "zoneName": "Restricted Server Vault Hall B",
+              "cameraIds": [
+                "CAM-02"
+              ],
+              "relatedEventIds": [
+                "EVT-9014"
+              ],
+              "assignedTo": "Aarav Mehta (ADMIN)",
+              "createdAtIso": "2026-11-15T14:39:00.000Z",
+              "updatedAtIso": "2026-11-15T14:39:00.000Z",
+              "rootCauseHypothesis": "Unscheduled maintenance technician dwell exceeding 120s threshold in cold aisle B2 without linked change ticket.",
+              "recommendedPlaybook": "PB-VAULT-CONTAINMENT",
+              "timeline": [
+                {
+                  "id": "TL-01",
+                  "timestampIso": "2026-11-15T14:39:00.000Z",
+                  "actor": "Policy Engine (POL-01)",
+                  "toStatus": "OPEN",
+                  "action": "Incident Automatically Created",
+                  "note": "Triggered by EVT-9014 (148s dwell at 96% confidence in ZN-02).",
+                  "verifiedEvidence": true
+                }
+              ]
+            },
+            "correlatedEvents": [
+              {
+                "id": "EVT-9014",
+                "tenantId": "TENANT-VANTA-01",
+                "cameraId": "CAM-02",
+                "cameraName": "Server Vault Corridor B2",
+                "deviceId": "DEV-WIN-03",
+                "zoneId": "ZN-02",
+                "zoneName": "Restricted Server Vault Hall B",
+                "timestampIso": "2026-11-15T14:39:00.000Z",
+                "category": "DWELL_THRESHOLD",
+                "severity": "HIGH",
+                "confidence": 0.96,
+                "provenance": "Simulated",
+                "summary": "Continuous dwell duration (148s) exceeded Restricted Vault policy threshold (120s) near Rack Row 4.",
+                "evidenceMetadata": {
+                  "objectCount": 1,
+                  "dwellSeconds": 148,
+                  "modelVersion": "COCO-SSD-640px-v2.4",
+                  "frameHash": "fcd73fb74a4edb28218a8d510f54e753e81a66d5cd87289c304fe4e9f5a52156"
+                },
+                "verified": true
+              }
+            ],
+            "hypothesis": "Unscheduled maintenance technician dwell exceeding 120s threshold in cold aisle B2 without linked change ticket.",
+            "recommendedPlaybook": "PB-VAULT-CONTAINMENT"
+          },
+          "provenance": "Inferred"
+        },
+        {
+          "executionId": "EXEC-MWIWGZ5J-29",
+          "toolName": "get_camera_inventory",
+          "category": "CAMERA_DEVICE",
+          "timestampIso": "2026-11-16T06:46:15.799Z",
+          "actor": "Aarav Mehta (ADMIN)",
+          "arguments": {},
+          "status": "EXECUTED",
+          "latencyMs": 6,
+          "resultSummary": "Retrieved 4 camera stream(s): CAM-01 (North Perimeter Gate Alpha - Connected), CAM-02 (Server Vault Corridor B2 - Simulated), CAM-03 (Substation Transformer Yard - Degraded), CAM-04 (SOC Operations Bridge East - Simulated).",
+          "dataPayload": {
+            "cameras": [
+              {
+                "id": "CAM-01",
+                "tenantId": "TENANT-VANTA-01",
+                "name": "North Perimeter Gate Alpha",
+                "zoneId": "ZN-01",
+                "zoneName": "North Logistics & Perimeter Gate",
+                "protocol": "ONVIF",
+                "connectorState": "Connected",
+                "isSimulatedStream": false,
+                "resolution": "1920x1080 (640px CV)",
+                "fps": 30,
+                "inferenceLatencyMs": 12,
+                "packetLossPct": 0.1,
+                "bitrateKbps": 4200,
+                "lastHeartbeatIso": "2026-11-16T06:17:16.304Z",
+                "occupancyCount": 6,
+                "maxCapacity": 20,
+                "coordinates": {
+                  "x": 18,
+                  "y": 24,
+                  "fovAngle": 75,
+                  "heading": 45
+                },
+                "activeDetections": [
+                  {
+                    "id": "DET-101",
+                    "label": "person",
+                    "confidence": 0.94,
+                    "x": 24,
+                    "y": 38,
+                    "width": 14,
+                    "height": 36,
+                    "dwellSeconds": 18,
+                    "zoneId": "ZN-01"
+                  },
+                  {
+                    "id": "DET-102",
+                    "label": "vehicle",
+                    "confidence": 0.91,
+                    "x": 58,
+                    "y": 44,
+                    "width": 26,
+                    "height": 28,
+                    "dwellSeconds": 64,
+                    "zoneId": "ZN-01"
+                  }
+                ]
+              },
+              {
+                "id": "CAM-02",
+                "tenantId": "TENANT-VANTA-01",
+                "name": "Server Vault Corridor B2",
+                "zoneId": "ZN-02",
+                "zoneName": "Restricted Server Vault Hall B",
+                "protocol": "RTSP",
+                "connectorState": "Simulated",
+                "isSimulatedStream": true,
+                "resolution": "2560x1440 (640px CV)",
+                "fps": 30,
+                "inferenceLatencyMs": 14,
+                "packetLossPct": 0,
+                "bitrateKbps": 5800,
+                "lastHeartbeatIso": "2026-11-15T14:44:00.000Z",
+                "occupancyCount": 2,
+                "maxCapacity": 4,
+                "coordinates": {
+                  "x": 54,
+                  "y": 30,
+                  "fovAngle": 65,
+                  "heading": 180
+                },
+                "activeDetections": [
+                  {
+                    "id": "DET-201",
+                    "label": "person",
+                    "confidence": 0.96,
+                    "x": 42,
+                    "y": 28,
+                    "width": 16,
+                    "height": 44,
+                    "dwellSeconds": 148,
+                    "zoneId": "ZN-02"
+                  }
+                ]
+              },
+              {
+                "id": "CAM-03",
+                "tenantId": "TENANT-VANTA-01",
+                "name": "Substation Transformer Yard",
+                "zoneId": "ZN-03",
+                "zoneName": "High-Voltage Energy Substation",
+                "protocol": "ONVIF",
+                "connectorState": "Degraded",
+                "isSimulatedStream": true,
+                "resolution": "1920x1080 (640px CV)",
+                "fps": 19.4,
+                "inferenceLatencyMs": 28,
+                "packetLossPct": 2.4,
+                "bitrateKbps": 2150,
+                "lastHeartbeatIso": "2026-11-15T14:43:00.000Z",
+                "occupancyCount": 1,
+                "maxCapacity": 6,
+                "coordinates": {
+                  "x": 78,
+                  "y": 68,
+                  "fovAngle": 80,
+                  "heading": 270
+                },
+                "activeDetections": [
+                  {
+                    "id": "DET-301",
+                    "label": "person",
+                    "confidence": 0.88,
+                    "x": 61,
+                    "y": 49,
+                    "width": 15,
+                    "height": 35,
+                    "dwellSeconds": 32,
+                    "zoneId": "ZN-03"
+                  }
+                ]
+              },
+              {
+                "id": "CAM-04",
+                "tenantId": "TENANT-VANTA-01",
+                "name": "SOC Operations Bridge East",
+                "zoneId": "ZN-04",
+                "zoneName": "Command & Operations Wing",
+                "protocol": "WEBRTC",
+                "connectorState": "Simulated",
+                "isSimulatedStream": true,
+                "resolution": "1920x1080 (640px CV)",
+                "fps": 30,
+                "inferenceLatencyMs": 15,
+                "packetLossPct": 0,
+                "bitrateKbps": 4600,
+                "lastHeartbeatIso": "2026-11-15T14:44:00.000Z",
+                "occupancyCount": 14,
+                "maxCapacity": 30,
+                "coordinates": {
+                  "x": 30,
+                  "y": 72,
+                  "fovAngle": 90,
+                  "heading": 0
+                },
+                "activeDetections": [
+                  {
+                    "id": "DET-401",
+                    "label": "person",
+                    "confidence": 0.95,
+                    "x": 32,
+                    "y": 36,
+                    "width": 14,
+                    "height": 38,
+                    "dwellSeconds": 410,
+                    "zoneId": "ZN-04"
+                  },
+                  {
+                    "id": "DET-402",
+                    "label": "person",
+                    "confidence": 0.93,
+                    "x": 54,
+                    "y": 40,
+                    "width": 14,
+                    "height": 36,
+                    "dwellSeconds": 380,
+                    "zoneId": "ZN-04"
+                  }
+                ]
+              }
+            ]
+          },
+          "provenance": "Measured"
+        }
+      ],
+      "latencyMs": 8038,
+      "modelUsed": "gemini-4-hydrogen + vanta-9layer"
+    }
+  ],
+  "toolExecutions": [
+    {
+      "executionId": "EXEC-MWIWH5R7-45",
+      "toolName": "execute_security_playbook",
+      "category": "OPERATIONS_GOVERNANCE",
+      "timestampIso": "2026-11-16T06:46:24.355Z",
+      "actor": "Aarav Mehta (ADMIN)",
+      "arguments": {},
+      "status": "EXECUTED",
+      "latencyMs": 6,
+      "resultSummary": "Executed security playbook PB-VAULT-CONTAINMENT: 3/3 verification steps completed and synced across connected devices.",
+      "dataPayload": {
+        "playbookId": "PB-VAULT-CONTAINMENT",
+        "stepsCompleted": [
+          "Verified camera telemetry heartbeat on target zone",
+          "Broadcast cloud sync alert to paired Android & Tablet command nodes",
+          "Recorded SHA-256 governance checkpoint"
+        ],
+        "verificationState": "VERIFIED_COMPLETED"
+      },
+      "provenance": "Measured"
+    },
+    {
+      "executionId": "EXEC-MWIWH5R7-72",
+      "toolName": "explain_incident",
+      "category": "EVENT_INCIDENT",
+      "timestampIso": "2026-11-16T06:46:24.355Z",
+      "actor": "Aarav Mehta (ADMIN)",
+      "arguments": {},
+      "status": "EXECUTED",
+      "latencyMs": 6,
+      "resultSummary": "Incident INC-2041 (Extended Dwell Threshold Exceeded in Server Vault Hall B) in Restricted Server Vault Hall B: Status=OPEN, Severity=HIGH. Correlated with 1 verified event(s). Hypothesis: Unscheduled maintenance technician dwell exceeding 120s threshold in cold aisle B2 without linked change ticket.",
+      "dataPayload": {
+        "incident": {
+          "id": "INC-2041",
+          "tenantId": "TENANT-VANTA-01",
+          "title": "Extended Dwell Threshold Exceeded in Server Vault Hall B",
+          "severity": "HIGH",
+          "status": "OPEN",
+          "zoneId": "ZN-02",
+          "zoneName": "Restricted Server Vault Hall B",
+          "cameraIds": [
+            "CAM-02"
+          ],
+          "relatedEventIds": [
+            "EVT-9014"
+          ],
+          "assignedTo": "Aarav Mehta (ADMIN)",
+          "createdAtIso": "2026-11-15T14:39:00.000Z",
+          "updatedAtIso": "2026-11-15T14:39:00.000Z",
+          "rootCauseHypothesis": "Unscheduled maintenance technician dwell exceeding 120s threshold in cold aisle B2 without linked change ticket.",
+          "recommendedPlaybook": "PB-VAULT-CONTAINMENT",
+          "timeline": [
+            {
+              "id": "TL-01",
+              "timestampIso": "2026-11-15T14:39:00.000Z",
+              "actor": "Policy Engine (POL-01)",
+              "toStatus": "OPEN",
+              "action": "Incident Automatically Created",
+              "note": "Triggered by EVT-9014 (148s dwell at 96% confidence in ZN-02).",
+              "verifiedEvidence": true
+            }
+          ]
+        },
+        "correlatedEvents": [
+          {
+            "id": "EVT-9014",
+            "tenantId": "TENANT-VANTA-01",
+            "cameraId": "CAM-02",
+            "cameraName": "Server Vault Corridor B2",
+            "deviceId": "DEV-WIN-03",
+            "zoneId": "ZN-02",
+            "zoneName": "Restricted Server Vault Hall B",
+            "timestampIso": "2026-11-15T14:39:00.000Z",
+            "category": "DWELL_THRESHOLD",
+            "severity": "HIGH",
+            "confidence": 0.96,
+            "provenance": "Simulated",
+            "summary": "Continuous dwell duration (148s) exceeded Restricted Vault policy threshold (120s) near Rack Row 4.",
+            "evidenceMetadata": {
+              "objectCount": 1,
+              "dwellSeconds": 148,
+              "modelVersion": "COCO-SSD-640px-v2.4",
+              "frameHash": "fcd73fb74a4edb28218a8d510f54e753e81a66d5cd87289c304fe4e9f5a52156"
+            },
+            "verified": true
+          }
+        ],
+        "hypothesis": "Unscheduled maintenance technician dwell exceeding 120s threshold in cold aisle B2 without linked change ticket.",
+        "recommendedPlaybook": "PB-VAULT-CONTAINMENT"
+      },
+      "provenance": "Inferred"
+    },
+    {
+      "executionId": "EXEC-MWIWGZ5J-29",
+      "toolName": "get_camera_inventory",
+      "category": "CAMERA_DEVICE",
+      "timestampIso": "2026-11-16T06:46:15.799Z",
+      "actor": "Aarav Mehta (ADMIN)",
+      "arguments": {},
+      "status": "EXECUTED",
+      "latencyMs": 6,
+      "resultSummary": "Retrieved 4 camera stream(s): CAM-01 (North Perimeter Gate Alpha - Connected), CAM-02 (Server Vault Corridor B2 - Simulated), CAM-03 (Substation Transformer Yard - Degraded), CAM-04 (SOC Operations Bridge East - Simulated).",
+      "dataPayload": {
+        "cameras": [
+          {
+            "id": "CAM-01",
+            "tenantId": "TENANT-VANTA-01",
+            "name": "North Perimeter Gate Alpha",
+            "zoneId": "ZN-01",
+            "zoneName": "North Logistics & Perimeter Gate",
+            "protocol": "ONVIF",
+            "connectorState": "Connected",
+            "isSimulatedStream": false,
+            "resolution": "1920x1080 (640px CV)",
+            "fps": 30,
+            "inferenceLatencyMs": 12,
+            "packetLossPct": 0.1,
+            "bitrateKbps": 4200,
+            "lastHeartbeatIso": "2026-11-16T06:17:16.304Z",
+            "occupancyCount": 6,
+            "maxCapacity": 20,
+            "coordinates": {
+              "x": 18,
+              "y": 24,
+              "fovAngle": 75,
+              "heading": 45
+            },
+            "activeDetections": [
+              {
+                "id": "DET-101",
+                "label": "person",
+                "confidence": 0.94,
+                "x": 24,
+                "y": 38,
+                "width": 14,
+                "height": 36,
+                "dwellSeconds": 18,
+                "zoneId": "ZN-01"
+              },
+              {
+                "id": "DET-102",
+                "label": "vehicle",
+                "confidence": 0.91,
+                "x": 58,
+                "y": 44,
+                "width": 26,
+                "height": 28,
+                "dwellSeconds": 64,
+                "zoneId": "ZN-01"
+              }
+            ]
+          },
+          {
+            "id": "CAM-02",
+            "tenantId": "TENANT-VANTA-01",
+            "name": "Server Vault Corridor B2",
+            "zoneId": "ZN-02",
+            "zoneName": "Restricted Server Vault Hall B",
+            "protocol": "RTSP",
+            "connectorState": "Simulated",
+            "isSimulatedStream": true,
+            "resolution": "2560x1440 (640px CV)",
+            "fps": 30,
+            "inferenceLatencyMs": 14,
+            "packetLossPct": 0,
+            "bitrateKbps": 5800,
+            "lastHeartbeatIso": "2026-11-15T14:44:00.000Z",
+            "occupancyCount": 2,
+            "maxCapacity": 4,
+            "coordinates": {
+              "x": 54,
+              "y": 30,
+              "fovAngle": 65,
+              "heading": 180
+            },
+            "activeDetections": [
+              {
+                "id": "DET-201",
+                "label": "person",
+                "confidence": 0.96,
+                "x": 42,
+                "y": 28,
+                "width": 16,
+                "height": 44,
+                "dwellSeconds": 148,
+                "zoneId": "ZN-02"
+              }
+            ]
+          },
+          {
+            "id": "CAM-03",
+            "tenantId": "TENANT-VANTA-01",
+            "name": "Substation Transformer Yard",
+            "zoneId": "ZN-03",
+            "zoneName": "High-Voltage Energy Substation",
+            "protocol": "ONVIF",
+            "connectorState": "Degraded",
+            "isSimulatedStream": true,
+            "resolution": "1920x1080 (640px CV)",
+            "fps": 19.4,
+            "inferenceLatencyMs": 28,
+            "packetLossPct": 2.4,
+            "bitrateKbps": 2150,
+            "lastHeartbeatIso": "2026-11-15T14:43:00.000Z",
+            "occupancyCount": 1,
+            "maxCapacity": 6,
+            "coordinates": {
+              "x": 78,
+              "y": 68,
+              "fovAngle": 80,
+              "heading": 270
+            },
+            "activeDetections": [
+              {
+                "id": "DET-301",
+                "label": "person",
+                "confidence": 0.88,
+                "x": 61,
+                "y": 49,
+                "width": 15,
+                "height": 35,
+                "dwellSeconds": 32,
+                "zoneId": "ZN-03"
+              }
+            ]
+          },
+          {
+            "id": "CAM-04",
+            "tenantId": "TENANT-VANTA-01",
+            "name": "SOC Operations Bridge East",
+            "zoneId": "ZN-04",
+            "zoneName": "Command & Operations Wing",
+            "protocol": "WEBRTC",
+            "connectorState": "Simulated",
+            "isSimulatedStream": true,
+            "resolution": "1920x1080 (640px CV)",
+            "fps": 30,
+            "inferenceLatencyMs": 15,
+            "packetLossPct": 0,
+            "bitrateKbps": 4600,
+            "lastHeartbeatIso": "2026-11-15T14:44:00.000Z",
+            "occupancyCount": 14,
+            "maxCapacity": 30,
+            "coordinates": {
+              "x": 30,
+              "y": 72,
+              "fovAngle": 90,
+              "heading": 0
+            },
+            "activeDetections": [
+              {
+                "id": "DET-401",
+                "label": "person",
+                "confidence": 0.95,
+                "x": 32,
+                "y": 36,
+                "width": 14,
+                "height": 38,
+                "dwellSeconds": 410,
+                "zoneId": "ZN-04"
+              },
+              {
+                "id": "DET-402",
+                "label": "person",
+                "confidence": 0.93,
+                "x": 54,
+                "y": 40,
+                "width": 14,
+                "height": 36,
+                "dwellSeconds": 380,
+                "zoneId": "ZN-04"
+              }
+            ]
+          }
+        ]
+      },
+      "provenance": "Measured"
+    },
+    {
+      "executionId": "EXEC-MWIWGZ5I-54",
+      "toolName": "explain_incident",
+      "category": "EVENT_INCIDENT",
+      "timestampIso": "2026-11-16T06:46:15.798Z",
+      "actor": "Aarav Mehta (ADMIN)",
+      "arguments": {},
+      "status": "EXECUTED",
+      "latencyMs": 6,
+      "resultSummary": "Incident INC-2041 (Extended Dwell Threshold Exceeded in Server Vault Hall B) in Restricted Server Vault Hall B: Status=OPEN, Severity=HIGH. Correlated with 1 verified event(s). Hypothesis: Unscheduled maintenance technician dwell exceeding 120s threshold in cold aisle B2 without linked change ticket.",
+      "dataPayload": {
+        "incident": {
+          "id": "INC-2041",
+          "tenantId": "TENANT-VANTA-01",
+          "title": "Extended Dwell Threshold Exceeded in Server Vault Hall B",
+          "severity": "HIGH",
+          "status": "OPEN",
+          "zoneId": "ZN-02",
+          "zoneName": "Restricted Server Vault Hall B",
+          "cameraIds": [
+            "CAM-02"
+          ],
+          "relatedEventIds": [
+            "EVT-9014"
+          ],
+          "assignedTo": "Aarav Mehta (ADMIN)",
+          "createdAtIso": "2026-11-15T14:39:00.000Z",
+          "updatedAtIso": "2026-11-15T14:39:00.000Z",
+          "rootCauseHypothesis": "Unscheduled maintenance technician dwell exceeding 120s threshold in cold aisle B2 without linked change ticket.",
+          "recommendedPlaybook": "PB-VAULT-CONTAINMENT",
+          "timeline": [
+            {
+              "id": "TL-01",
+              "timestampIso": "2026-11-15T14:39:00.000Z",
+              "actor": "Policy Engine (POL-01)",
+              "toStatus": "OPEN",
+              "action": "Incident Automatically Created",
+              "note": "Triggered by EVT-9014 (148s dwell at 96% confidence in ZN-02).",
+              "verifiedEvidence": true
+            }
+          ]
+        },
+        "correlatedEvents": [
+          {
+            "id": "EVT-9014",
+            "tenantId": "TENANT-VANTA-01",
+            "cameraId": "CAM-02",
+            "cameraName": "Server Vault Corridor B2",
+            "deviceId": "DEV-WIN-03",
+            "zoneId": "ZN-02",
+            "zoneName": "Restricted Server Vault Hall B",
+            "timestampIso": "2026-11-15T14:39:00.000Z",
+            "category": "DWELL_THRESHOLD",
+            "severity": "HIGH",
+            "confidence": 0.96,
+            "provenance": "Simulated",
+            "summary": "Continuous dwell duration (148s) exceeded Restricted Vault policy threshold (120s) near Rack Row 4.",
+            "evidenceMetadata": {
+              "objectCount": 1,
+              "dwellSeconds": 148,
+              "modelVersion": "COCO-SSD-640px-v2.4",
+              "frameHash": "fcd73fb74a4edb28218a8d510f54e753e81a66d5cd87289c304fe4e9f5a52156"
+            },
+            "verified": true
+          }
+        ],
+        "hypothesis": "Unscheduled maintenance technician dwell exceeding 120s threshold in cold aisle B2 without linked change ticket.",
+        "recommendedPlaybook": "PB-VAULT-CONTAINMENT"
+      },
+      "provenance": "Inferred"
+    },
+    {
+      "executionId": "EXEC-MWIWGZ5H-62",
+      "toolName": "list_incidents",
+      "category": "EVENT_INCIDENT",
+      "timestampIso": "2026-11-16T06:46:15.797Z",
+      "actor": "Aarav Mehta (ADMIN)",
+      "arguments": {},
+      "status": "EXECUTED",
+      "latencyMs": 6,
+      "resultSummary": "Found 2 incident(s): INC-2041 [HIGH/OPEN] \"Extended Dwell Threshold Exceeded in Server Vault Hall B\"; INC-2040 [MEDIUM/INVESTIGATING] \"Substation ONVIF Bridge Packet Loss & Jitter\".",
+      "dataPayload": {
+        "incidents": [
+          {
+            "id": "INC-2041",
+            "tenantId": "TENANT-VANTA-01",
+            "title": "Extended Dwell Threshold Exceeded in Server Vault Hall B",
+            "severity": "HIGH",
+            "status": "OPEN",
+            "zoneId": "ZN-02",
+            "zoneName": "Restricted Server Vault Hall B",
+            "cameraIds": [
+              "CAM-02"
+            ],
+            "relatedEventIds": [
+              "EVT-9014"
+            ],
+            "assignedTo": "Aarav Mehta (ADMIN)",
+            "createdAtIso": "2026-11-15T14:39:00.000Z",
+            "updatedAtIso": "2026-11-15T14:39:00.000Z",
+            "rootCauseHypothesis": "Unscheduled maintenance technician dwell exceeding 120s threshold in cold aisle B2 without linked change ticket.",
+            "recommendedPlaybook": "PB-VAULT-CONTAINMENT",
+            "timeline": [
+              {
+                "id": "TL-01",
+                "timestampIso": "2026-11-15T14:39:00.000Z",
+                "actor": "Policy Engine (POL-01)",
+                "toStatus": "OPEN",
+                "action": "Incident Automatically Created",
+                "note": "Triggered by EVT-9014 (148s dwell at 96% confidence in ZN-02).",
+                "verifiedEvidence": true
+              }
+            ]
+          },
+          {
+            "id": "INC-2040",
+            "tenantId": "TENANT-VANTA-01",
+            "title": "Substation ONVIF Bridge Packet Loss & Jitter",
+            "severity": "MEDIUM",
+            "status": "INVESTIGATING",
+            "zoneId": "ZN-03",
+            "zoneName": "High-Voltage Energy Substation",
+            "cameraIds": [
+              "CAM-03"
+            ],
+            "relatedEventIds": [
+              "EVT-9013"
+            ],
+            "assignedTo": "Priya Nair (SECURITY_OPERATOR)",
+            "createdAtIso": "2026-11-15T14:31:00.000Z",
+            "updatedAtIso": "2026-11-15T14:36:00.000Z",
+            "rootCauseHypothesis": "EMI interference or saturated uplink on Substation Jetson Orin Bridge (DEV-EDG-04) causing 2.4% UDP packet drop.",
+            "recommendedPlaybook": "PB-STREAM-STABILIZE",
+            "timeline": [
+              {
+                "id": "TL-02",
+                "timestampIso": "2026-11-15T14:31:00.000Z",
+                "actor": "Telemetry Monitor",
+                "toStatus": "OPEN",
+                "action": "Incident Created",
+                "note": "Packet loss crossed 2.0% threshold on CAM-03.",
+                "verifiedEvidence": true
+              },
+              {
+                "id": "TL-03",
+                "timestampIso": "2026-11-15T14:36:00.000Z",
+                "actor": "Priya Nair (SECURITY_OPERATOR)",
+                "fromStatus": "OPEN",
+                "toStatus": "INVESTIGATING",
+                "action": "Transitioned OPEN -> INVESTIGATING",
+                "note": "Initiated remote diagnostic check on DEV-EDG-04 network interface.",
+                "verifiedEvidence": true
+              }
+            ]
+          }
+        ]
+      },
+      "provenance": "Measured"
+    }
+  ],
+  "timeSeries": [
+    {
+      "timestampIso": "2026-11-15T12:00:00.000Z",
+      "label": "12:00",
+      "eventsCount": 4,
+      "incidentsCount": 1,
+      "occupancyTotal": 28,
+      "avgInferenceMs": 16,
+      "syncThroughputKbps": 1420,
+      "provenance": "Simulated"
+    },
+    {
+      "timestampIso": "2026-11-15T12:15:00.000Z",
+      "label": "12:15",
+      "eventsCount": 7,
+      "incidentsCount": 1,
+      "occupancyTotal": 33,
+      "avgInferenceMs": 17,
+      "syncThroughputKbps": 1465,
+      "provenance": "Simulated"
+    },
+    {
+      "timestampIso": "2026-11-15T12:30:00.000Z",
+      "label": "12:30",
+      "eventsCount": 10,
+      "incidentsCount": 1,
+      "occupancyTotal": 38,
+      "avgInferenceMs": 18,
+      "syncThroughputKbps": 1510,
+      "provenance": "Simulated"
+    },
+    {
+      "timestampIso": "2026-11-15T12:45:00.000Z",
+      "label": "12:45",
+      "eventsCount": 4,
+      "incidentsCount": 1,
+      "occupancyTotal": 43,
+      "avgInferenceMs": 19,
+      "syncThroughputKbps": 1555,
+      "provenance": "Simulated"
+    },
+    {
+      "timestampIso": "2026-11-15T13:00:00.000Z",
+      "label": "13:00",
+      "eventsCount": 7,
+      "incidentsCount": 1,
+      "occupancyTotal": 29,
+      "avgInferenceMs": 20,
+      "syncThroughputKbps": 1600,
+      "provenance": "Simulated"
+    },
+    {
+      "timestampIso": "2026-11-15T13:15:00.000Z",
+      "label": "13:15",
+      "eventsCount": 10,
+      "incidentsCount": 1,
+      "occupancyTotal": 34,
+      "avgInferenceMs": 16,
+      "syncThroughputKbps": 1645,
+      "provenance": "Simulated"
+    },
+    {
+      "timestampIso": "2026-11-15T13:30:00.000Z",
+      "label": "13:30",
+      "eventsCount": 4,
+      "incidentsCount": 1,
+      "occupancyTotal": 39,
+      "avgInferenceMs": 17,
+      "syncThroughputKbps": 1690,
+      "provenance": "Simulated"
+    },
+    {
+      "timestampIso": "2026-11-15T13:45:00.000Z",
+      "label": "13:45",
+      "eventsCount": 7,
+      "incidentsCount": 1,
+      "occupancyTotal": 44,
+      "avgInferenceMs": 18,
+      "syncThroughputKbps": 1735,
+      "provenance": "Simulated"
+    },
+    {
+      "timestampIso": "2026-11-15T14:00:00.000Z",
+      "label": "14:00",
+      "eventsCount": 10,
+      "incidentsCount": 1,
+      "occupancyTotal": 30,
+      "avgInferenceMs": 19,
+      "syncThroughputKbps": 1780,
+      "provenance": "Simulated"
+    },
+    {
+      "timestampIso": "2026-11-15T14:15:00.000Z",
+      "label": "14:15",
+      "eventsCount": 4,
+      "incidentsCount": 2,
+      "occupancyTotal": 35,
+      "avgInferenceMs": 20,
+      "syncThroughputKbps": 1825,
+      "provenance": "Simulated"
+    },
+    {
+      "timestampIso": "2026-11-15T14:30:00.000Z",
+      "label": "14:30",
+      "eventsCount": 7,
+      "incidentsCount": 2,
+      "occupancyTotal": 40,
+      "avgInferenceMs": 16,
+      "syncThroughputKbps": 1870,
+      "provenance": "Simulated"
+    },
+    {
+      "timestampIso": "2026-11-15T14:45:00.000Z",
+      "label": "14:45",
+      "eventsCount": 10,
+      "incidentsCount": 2,
+      "occupancyTotal": 45,
+      "avgInferenceMs": 17,
+      "syncThroughputKbps": 1915,
+      "provenance": "Simulated"
+    }
+  ],
+  "preferences": {
+    "voiceProvider": "BROWSER_SPEECH_SYNTHESIS",
+    "languagePreference": "en",
+    "speakingRate": 1,
+    "volume": 0.9,
+    "autoSpeakResponses": true,
+    "conversationMode": "PUSH_TO_TALK"
+  },
+  "visionModel": {
+    "providerId": "TFJS_COCO_SSD_640",
+    "modelName": "COCO-SSD MobileNetV2 (640px Normalized + Class-Aware NMS)",
+    "modelSizeMb": 4.8,
+    "supportedClassesCount": 80,
+    "loadTimeMs": 142,
+    "avgInferenceLatencyMs": 16,
+    "memoryConsumptionMb": 64,
+    "readinessState": "READY",
+    "frameSkips": 0,
+    "samplingHz": 15
+  },
+  "activeTracks": [
+    {
+      "trackId": "TRK-CAM-01-DET-101",
+      "sessionId": "SES-CAM-01-V14",
+      "cameraId": "CAM-01",
+      "zoneId": "ZN-01",
+      "label": "person",
+      "bbox": {
+        "x": 24,
+        "y": 38,
+        "width": 14,
+        "height": 36
+      },
+      "centroid": {
+        "cx": 31,
+        "cy": 56
+      },
+      "velocity": {
+        "vx": 0.65,
+        "vy": 0.12
+      },
+      "direction": "EAST",
+      "confidence": 0.94,
+      "confidenceHistory": [
+        0.92,
+        0.93,
+        0.94
+      ],
+      "persistenceFrames": 42,
+      "occludedFrames": 1,
+      "dwellSeconds": 18,
+      "lastUpdatedIso": "2026-11-16T14:18:43.694Z",
+      "isBiometric": false
+    },
+    {
+      "trackId": "TRK-CAM-01-DET-102",
+      "sessionId": "SES-CAM-01-V14",
+      "cameraId": "CAM-01",
+      "zoneId": "ZN-01",
+      "label": "vehicle",
+      "bbox": {
+        "x": 58,
+        "y": 44,
+        "width": 26,
+        "height": 28
+      },
+      "centroid": {
+        "cx": 71,
+        "cy": 58
+      },
+      "velocity": {
+        "vx": 0.08,
+        "vy": -0.04
+      },
+      "direction": "STATIC",
+      "confidence": 0.91,
+      "confidenceHistory": [
+        0.9,
+        0.91,
+        0.91
+      ],
+      "persistenceFrames": 118,
+      "occludedFrames": 1,
+      "dwellSeconds": 64,
+      "lastUpdatedIso": "2026-11-16T14:18:43.694Z",
+      "isBiometric": false
+    },
+    {
+      "trackId": "TRK-CAM-02-DET-201",
+      "sessionId": "SES-CAM-02-V14",
+      "cameraId": "CAM-02",
+      "zoneId": "ZN-02",
+      "label": "person",
+      "bbox": {
+        "x": 42,
+        "y": 28,
+        "width": 16,
+        "height": 44
+      },
+      "centroid": {
+        "cx": 50,
+        "cy": 50
+      },
+      "velocity": {
+        "vx": 0.05,
+        "vy": 0.02
+      },
+      "direction": "STATIC",
+      "confidence": 0.96,
+      "confidenceHistory": [
+        0.95,
+        0.96,
+        0.96
+      ],
+      "persistenceFrames": 296,
+      "occludedFrames": 0,
+      "dwellSeconds": 148,
+      "lastUpdatedIso": "2026-11-15T14:44:00.000Z",
+      "isBiometric": false
+    },
+    {
+      "trackId": "TRK-CAM-03-DET-301",
+      "sessionId": "SES-CAM-03-V14",
+      "cameraId": "CAM-03",
+      "zoneId": "ZN-03",
+      "label": "person",
+      "bbox": {
+        "x": 61,
+        "y": 49,
+        "width": 15,
+        "height": 35
+      },
+      "centroid": {
+        "cx": 68.5,
+        "cy": 66.5
+      },
+      "velocity": {
+        "vx": -0.45,
+        "vy": 0.15
+      },
+      "direction": "WEST",
+      "confidence": 0.88,
+      "confidenceHistory": [
+        0.86,
+        0.87,
+        0.88
+      ],
+      "persistenceFrames": 54,
+      "occludedFrames": 0,
+      "dwellSeconds": 32,
+      "lastUpdatedIso": "2026-11-15T14:43:00.000Z",
+      "isBiometric": false
+    }
+  ],
+  "workflows": [
+    {
+      "id": "WF-01",
+      "name": "Camera Activity & Track Correlation Report",
+      "description": "Aggregates active 640px object tracks, class-aware NMS counts, and zone occupancy ratios across all camera streams.",
+      "triggerType": "MANUAL_OPERATOR",
+      "requiresHumanApproval": false,
+      "consequentialActionSummary": "Read-only cross-camera aggregation and audit log entry.",
+      "status": "READY",
+      "steps": [
+        "Invoke get_camera_inventory across all zones",
+        "Correlate active Centroid/IoU object tracks",
+        "Compile structured scene summary with confidence intervals"
+      ],
+      "lastRunIso": "2026-11-15T14:33:00.000Z",
+      "lastResultSummary": "4 cameras inspected, 6 non-biometric tracks verified.",
+      "correlationId": "CORR-V14-INIT01"
+    },
+    {
+      "id": "WF-02",
+      "name": "Cross-Window Temporal Activity Comparison",
+      "description": "Compares trailing 1H vs 6H event sequences and runs short-horizon zone occupancy estimation.",
+      "triggerType": "SCHEDULED",
+      "requiresHumanApproval": false,
+      "consequentialActionSummary": "Read-only temporal correlation and occupancy forecast.",
+      "status": "READY",
+      "steps": [
+        "Invoke analyze_event_timeline across facility zones",
+        "Execute predict_aggregate_occupancy (30m horizon)",
+        "Publish epistemic comparison report"
+      ],
+      "lastRunIso": "2026-11-15T14:25:00.000Z",
+      "lastResultSummary": "Concentration identified in ZN-02; 30m occupancy forecast 26 (±4).",
+      "correlationId": "CORR-V14-INIT02"
+    },
+    {
+      "id": "WF-03",
+      "name": "Device Fleet & Vision Pipeline Health Diagnostic",
+      "description": "Runs end-to-end packet-loss, bitrate, heartbeat, and inference queue diagnostics on all cameras and edge bridges.",
+      "triggerType": "MANUAL_OPERATOR",
+      "requiresHumanApproval": false,
+      "consequentialActionSummary": "Read-only diagnostic probe across devices and streams.",
+      "status": "READY",
+      "steps": [
+        "Invoke run_troubleshooter on degraded endpoints",
+        "Verify get_pipeline_diagnostics packet-loss thresholds",
+        "Log structured observability correlation record"
+      ],
+      "lastRunIso": "2026-11-15T14:37:00.000Z",
+      "lastResultSummary": "Flagged 2.4% UDP packet drop on CAM-03 / DEV-EDG-04.",
+      "correlationId": "CORR-V14-INIT03"
+    },
+    {
+      "id": "WF-04",
+      "name": "Vault Dwell Containment & Multi-Device Alert Dispatch",
+      "description": "Correlates INC-2041 evidence, dispatches synchronized containment alert to Android/Tablet nodes, and executes PB-VAULT-CONTAINMENT.",
+      "triggerType": "POLICY_CORRELATION",
+      "requiresHumanApproval": true,
+      "consequentialActionSummary": "Executes security playbook PB-VAULT-CONTAINMENT and broadcasts high-priority alert to field devices.",
+      "status": "COMPLETED",
+      "steps": [
+        "Verify EVT-9014 frame hash and dwell duration (148s)",
+        "Obtain explicit Human Operator Approval (Section 12 boundary)",
+        "Execute execute_security_playbook (PB-VAULT-CONTAINMENT)"
+      ],
+      "lastRunIso": "2026-11-16T06:46:24.355Z",
+      "lastResultSummary": "Completed 3 orchestrated steps (Human-Approved). explain_incident: Incident INC-2041 (Extended Dwell Threshold Exceeded in Server Vault Hall B) in Restricted Server Vault Hall B: Status=OPEN, Severity=HIGH. Correlated with 1 verified event(s). Hypothesis: Unscheduled maintenance technician dwell exceeding 120s threshold in cold aisle B2 without linked change ticket. | execute_security_playbook: Executed security playbook PB-VAULT-CONTAINMENT: 3/3 verification steps completed and synced across connected devices.",
+      "correlationId": "CORR-MWIWH5R8"
+    }
+  ],
+  "memoryGovernance": {
+    "conversationTurnCount": 3,
+    "sessionContextKeys": [
+      "tenantId",
+      "siteId",
+      "selectedCameraId",
+      "selectedIncidentId"
+    ],
+    "operationalMemoryCount": 5,
+    "retentionPeriodDays": 30,
+    "piiMinimizationActive": true,
+    "rawVideoStored": false,
+    "lastPurgedIso": null
+  },
+  "observability": {
+    "correlationId": "OBS-V14-GENESIS",
+    "cameraHealthScore": 92,
+    "videoReadiness": "SIMULATED_CANVAS",
+    "modelReadiness": "COCO-SSD-640px READY (Bounded Queue <= 2 frames)",
+    "avgInferenceLatencyMs": 1878,
+    "processingFrequencyHz": 15,
+    "frameSkipsCount": 0,
+    "apiLatencyMs": 11,
+    "toolExecutionAvgMs": 8,
+    "brainResponseAvgMs": 42,
+    "voiceResponseAvgMs": 65,
+    "databaseHealth": "HEALTHY",
+    "errorRatePct": 0,
+    "diagnosticFindings": [
+      {
+        "subsystem": "Camera & Vision 2.0 Pipeline",
+        "status": "OK",
+        "message": "3 streams nominal at 30 FPS; 640px NMS + Centroid/IoU tracker operating within 18ms budget."
+      },
+      {
+        "subsystem": "Substation Edge Bridge (CAM-03 / DEV-EDG-04)",
+        "status": "WARNING",
+        "message": "ONVIF stream experiencing 2.4% UDP packet loss; adaptive sampling throttled to 19.4 FPS."
+      },
+      {
+        "subsystem": "Vanta Brain 3.0 & SHA-256 Ledger",
+        "status": "OK",
+        "message": "All 9 layers and 25 tools responsive; cryptographic audit hash chain verified intact."
+      }
+    ]
+  },
+  "sceneSummaries": [
+    {
+      "cameraId": "CAM-01",
+      "cameraName": "North Perimeter Gate Alpha",
+      "zoneId": "ZN-01",
+      "timestampIso": "2026-11-16T14:18:43.695Z",
+      "detectedClasses": {
+        "person": 1,
+        "vehicle": 1
+      },
+      "detectionCount": 2,
+      "activeTrackCount": 2,
+      "motionState": "MODERATE_MOTION",
+      "zoneOccupancyEstimate": 1,
+      "avgConfidence": 0.93,
+      "modelStatus": "COCO-SSD-640px (Simulated Telemetry)",
+      "uncertaintyNote": "Bounding boxes and camera-scoped Track IDs reflect geometric object localization only (±4% spatial variance).",
+      "safetyGuarantee": "Zero-Biometric Enforcement: No emotion, intent, criminality, or personal identity is inferred."
+    },
+    {
+      "cameraId": "CAM-02",
+      "cameraName": "Server Vault Corridor B2",
+      "zoneId": "ZN-02",
+      "timestampIso": "2026-11-16T14:18:43.695Z",
+      "detectedClasses": {
+        "person": 1
+      },
+      "detectionCount": 1,
+      "activeTrackCount": 1,
+      "motionState": "ELEVATED_MOTION",
+      "zoneOccupancyEstimate": 2,
+      "avgConfidence": 0.96,
+      "modelStatus": "COCO-SSD-640px (Simulated Telemetry)",
+      "uncertaintyNote": "Bounding boxes and camera-scoped Track IDs reflect geometric object localization only (±4% spatial variance).",
+      "safetyGuarantee": "Zero-Biometric Enforcement: No emotion, intent, criminality, or personal identity is inferred."
+    },
+    {
+      "cameraId": "CAM-03",
+      "cameraName": "Substation Transformer Yard",
+      "zoneId": "ZN-03",
+      "timestampIso": "2026-11-16T14:18:43.695Z",
+      "detectedClasses": {
+        "person": 1
+      },
+      "detectionCount": 1,
+      "activeTrackCount": 1,
+      "motionState": "STABLE",
+      "zoneOccupancyEstimate": 1,
+      "avgConfidence": 0.88,
+      "modelStatus": "COCO-SSD-640px (Simulated Telemetry)",
+      "uncertaintyNote": "Bounding boxes and camera-scoped Track IDs reflect geometric object localization only (±4% spatial variance).",
+      "safetyGuarantee": "Zero-Biometric Enforcement: No emotion, intent, criminality, or personal identity is inferred."
+    },
+    {
+      "cameraId": "CAM-04",
+      "cameraName": "SOC Operations Bridge East",
+      "zoneId": "ZN-04",
+      "timestampIso": "2026-11-16T14:18:43.696Z",
+      "detectedClasses": {
+        "person": 2
+      },
+      "detectionCount": 2,
+      "activeTrackCount": 0,
+      "motionState": "ELEVATED_MOTION",
+      "zoneOccupancyEstimate": 14,
+      "avgConfidence": 0.94,
+      "modelStatus": "COCO-SSD-640px (Simulated Telemetry)",
+      "uncertaintyNote": "Bounding boxes and camera-scoped Track IDs reflect geometric object localization only (±4% spatial variance).",
+      "safetyGuarantee": "Zero-Biometric Enforcement: No emotion, intent, criminality, or personal identity is inferred."
+    }
+  ],
+  "correlationPipeline": [
+    {
+      "stageNumber": 1,
+      "stageName": "Vision Metadata",
+      "status": "ACTIVE",
+      "itemsProcessed": 120,
+      "deduplicatedCount": 0,
+      "cooldownSec": 0,
+      "detail": "Ingesting 640px normalized metadata across 4 camera endpoints."
+    },
+    {
+      "stageNumber": 2,
+      "stageName": "Detection Event",
+      "status": "ACTIVE",
+      "itemsProcessed": 6,
+      "deduplicatedCount": 1,
+      "cooldownSec": 5,
+      "detail": "Class-aware NMS filtered 6 verified bounding boxes (confidence >= 50%)."
+    },
+    {
+      "stageNumber": 3,
+      "stageName": "Tracking Update",
+      "status": "ACTIVE",
+      "itemsProcessed": 4,
+      "deduplicatedCount": 0,
+      "cooldownSec": 2,
+      "detail": "Maintained 4 camera-scoped Centroid/IoU tracks with occlusion tolerance."
+    },
+    {
+      "stageNumber": 4,
+      "stageName": "Motion Analysis",
+      "status": "ACTIVE",
+      "itemsProcessed": 4,
+      "deduplicatedCount": 0,
+      "cooldownSec": 10,
+      "detail": "Computed displacement vectors and dwell-time counters per zone polygon."
+    },
+    {
+      "stageNumber": 5,
+      "stageName": "Zone Evaluation",
+      "status": "ACTIVE",
+      "itemsProcessed": 4,
+      "deduplicatedCount": 0,
+      "cooldownSec": 15,
+      "detail": "Evaluated occupancy & clearance across 4 facility zones."
+    },
+    {
+      "stageNumber": 6,
+      "stageName": "Event Correlation",
+      "status": "COOLDOWN_DEDUP",
+      "itemsProcessed": 7,
+      "deduplicatedCount": 4,
+      "cooldownSec": 60,
+      "detail": "Deduplicated 4 repeated frame observations into 3 canonical events (60s cooldown)."
+    },
+    {
+      "stageNumber": 7,
+      "stageName": "Policy Evaluation",
+      "status": "ACTIVE",
+      "itemsProcessed": 3,
+      "deduplicatedCount": 0,
+      "cooldownSec": 30,
+      "detail": "Tested 3 compound rules; policy matches flagged as operational signals."
+    },
+    {
+      "stageNumber": 8,
+      "stageName": "Incident Candidate",
+      "status": "ACTIVE",
+      "itemsProcessed": 2,
+      "deduplicatedCount": 1,
+      "cooldownSec": 120,
+      "detail": "2 incident candidate(s) escalated; single detections prevented from auto-critical jump."
+    },
+    {
+      "stageNumber": 9,
+      "stageName": "Authorized Workflow",
+      "status": "GATED",
+      "itemsProcessed": 4,
+      "deduplicatedCount": 0,
+      "cooldownSec": 0,
+      "detail": "Human Approval Boundary enforced prior to any consequential containment workflow."
+    }
+  ],
+  "detectionFilterConfig": {
+    "globalMinConfidence": 0.45,
+    "classThresholds": {
+      "person": 0.5,
+      "car": 0.5,
+      "truck": 0.5,
+      "vehicle": 0.5,
+      "laptop": 0.45,
+      "cell phone": 0.45,
+      "backpack": 0.45
+    },
+    "displayThreshold": 0.45,
+    "eventGenerationThreshold": 0.65,
+    "enabledClasses": [
+      "person",
+      "bicycle",
+      "car",
+      "motorcycle",
+      "bus",
+      "truck",
+      "vehicle",
+      "backpack",
+      "handbag",
+      "suitcase",
+      "laptop",
+      "cell phone",
+      "chair",
+      "bottle",
+      "book"
+    ],
+    "nmsIouThreshold": 0.5
+  },
+  "measuredVisionTelemetry": {
+    "modelStatus": "READY",
+    "modelId": "tfjs-coco-ssd-lite_mobilenet_v2",
+    "modelVersion": "2.2.3",
+    "modelInitTimeMs": 20700,
+    "inferenceLatencyMs": 1878,
+    "processedFrames": 0,
+    "skippedFrames": 0,
+    "cameraFps": null,
+    "inferenceFps": null,
+    "activeTracksCount": 4,
+    "activeDetectionsCount": 0,
+    "errorCount": 0,
+    "lastError": null,
+    "performanceProfile": "BALANCED",
+    "provenanceMode": "REAL_MODEL"
+  },
+  "detectionEventRules": [
+    {
+      "ruleId": "RULE-V15-PERSON-DWELL",
+      "name": "Sustained Person Presence in Monitored Zone",
+      "objectClass": "person",
+      "minConfidence": 0.65,
+      "minPersistenceSeconds": 2,
+      "minRepeatedFrames": 2,
+      "cooldownSeconds": 30,
+      "severity": "MEDIUM",
+      "enabled": true
+    },
+    {
+      "ruleId": "RULE-V15-VEHICLE-GATE",
+      "name": "Verified Vehicle / Logistics Asset Detection",
+      "objectClass": "car",
+      "minConfidence": 0.65,
+      "minPersistenceSeconds": 1,
+      "minRepeatedFrames": 2,
+      "cooldownSeconds": 45,
+      "severity": "LOW",
+      "enabled": true
+    },
+    {
+      "ruleId": "RULE-V15-EQUIPMENT-CHECK",
+      "name": "Portable Device / Equipment Presence",
+      "objectClass": "cell phone",
+      "minConfidence": 0.55,
+      "minPersistenceSeconds": 1,
+      "minRepeatedFrames": 1,
+      "cooldownSeconds": 30,
+      "severity": "LOW",
+      "enabled": true
+    }
+  ],
+  "latestNormalizedDetections": []
+}

@@ -250,6 +250,140 @@ export interface BrainToolExecutionRecord {
   provenance: DataProvenance;
 }
 
+export type TrackDirection = 'NORTH' | 'EAST' | 'SOUTH' | 'WEST' | 'STATIC';
+
+export interface ObjectTrack {
+  trackId: string;
+  sessionId: string;
+  cameraId: string;
+  zoneId: string;
+  label: string;
+  bbox: { x: number; y: number; width: number; height: number };
+  centroid: { cx: number; cy: number };
+  velocity: { vx: number; vy: number };
+  direction: TrackDirection;
+  confidence: number;
+  confidenceHistory: number[];
+  persistenceFrames: number;
+  occludedFrames: number;
+  dwellSeconds: number;
+  lastUpdatedIso: string;
+  isBiometric: false;
+}
+
+export interface VisionModelSpec {
+  providerId: 'TFJS_COCO_SSD_640' | 'ONNX_WEB_QUANTIZED' | 'CANVAS_MOTION_NMS';
+  modelName: string;
+  modelSizeMb: number;
+  supportedClassesCount: number;
+  loadTimeMs: number;
+  avgInferenceLatencyMs: number;
+  memoryConsumptionMb: number;
+  readinessState: 'READY' | 'LOADING' | 'FALLBACK_CANVAS' | 'ERROR';
+  frameSkips: number;
+  samplingHz: number;
+}
+
+export interface SceneIntelligenceSummary {
+  cameraId: string;
+  cameraName: string;
+  zoneId: string;
+  timestampIso: string;
+  detectedClasses: Record<string, number>;
+  detectionCount: number;
+  activeTrackCount: number;
+  motionState: 'STABLE' | 'MODERATE_MOTION' | 'ELEVATED_MOTION';
+  zoneOccupancyEstimate: number;
+  avgConfidence: number;
+  modelStatus: string;
+  uncertaintyNote: string;
+  safetyGuarantee: string;
+}
+
+export type EventClassificationStage =
+  | 'DETECTION'
+  | 'OBSERVATION'
+  | 'EVENT'
+  | 'POLICY_MATCH'
+  | 'INCIDENT_CANDIDATE'
+  | 'CONFIRMED_INCIDENT';
+
+export interface CorrelationPipelineStage {
+  stageNumber: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
+  stageName:
+    | 'Vision Metadata'
+    | 'Detection Event'
+    | 'Tracking Update'
+    | 'Motion Analysis'
+    | 'Zone Evaluation'
+    | 'Event Correlation'
+    | 'Policy Evaluation'
+    | 'Incident Candidate'
+    | 'Authorized Workflow';
+  status: 'ACTIVE' | 'COOLDOWN_DEDUP' | 'GATED';
+  itemsProcessed: number;
+  deduplicatedCount: number;
+  cooldownSec: number;
+  detail: string;
+}
+
+export interface EpistemicStatement {
+  category:
+    | 'Verified Fact'
+    | 'Calculated Value'
+    | 'Estimate'
+    | 'Model Interpretation'
+    | 'Assumption'
+    | 'Unavailable Information';
+  statement: string;
+  sourceRef: string;
+}
+
+export interface AutonomousWorkflow {
+  id: string;
+  name: string;
+  description: string;
+  triggerType: 'MANUAL_OPERATOR' | 'POLICY_CORRELATION' | 'SCHEDULED';
+  requiresHumanApproval: boolean;
+  consequentialActionSummary: string;
+  status: 'READY' | 'AWAITING_APPROVAL' | 'EXECUTING' | 'COMPLETED' | 'CANCELLED';
+  steps: string[];
+  lastRunIso: string | null;
+  lastResultSummary: string | null;
+  correlationId: string;
+}
+
+export interface MemoryGovernanceState {
+  conversationTurnCount: number;
+  sessionContextKeys: string[];
+  operationalMemoryCount: number;
+  retentionPeriodDays: number;
+  piiMinimizationActive: boolean;
+  rawVideoStored: false;
+  lastPurgedIso: string | null;
+}
+
+export interface SystemObservabilityMetrics {
+  correlationId: string;
+  cameraHealthScore: number;
+  videoReadiness: 'READY' | 'SIMULATED_CANVAS';
+  modelReadiness: string;
+  avgInferenceLatencyMs: number;
+  processingFrequencyHz: number;
+  frameSkipsCount: number;
+  apiLatencyMs: number;
+  toolExecutionAvgMs: number;
+  brainResponseAvgMs: number;
+  voiceResponseAvgMs: number;
+  databaseHealth: 'HEALTHY' | 'DEGRADED';
+  errorRatePct: number;
+  diagnosticFindings: {
+    subsystem: string;
+    status: 'OK' | 'WARNING' | 'ERROR';
+    message: string;
+  }[];
+}
+
 export interface ConversationMessage {
   id: string;
   conversationId: string;
@@ -261,6 +395,7 @@ export interface ConversationMessage {
   directAnswer?: string;
   keyFindings?: string[];
   evidenceCitations?: string[];
+  epistemicBreakdown?: EpistemicStatement[];
   uncertaintyDisclosure?: string;
   recommendedNextAction?: string;
   layerTraces?: BrainLayerTrace[];
@@ -289,6 +424,86 @@ export interface AssistantPreferences {
   conversationMode: 'PUSH_TO_TALK' | 'CONTINUOUS' | 'TEXT_ONLY';
 }
 
+export type DetectionProvenance = 'REAL_MODEL' | 'SIMULATED_DEMO' | 'IMPORTED_SAMPLE';
+
+export type ModelProviderStatus =
+  | 'UNINITIALIZED'
+  | 'LOADING'
+  | 'READY'
+  | 'RUNNING'
+  | 'ERROR'
+  | 'DISPOSED';
+
+export type PerformanceProfile = 'LOW_RESOURCE' | 'BALANCED' | 'HIGH_PERFORMANCE';
+
+export interface NormalizedDetection {
+  detectionId: string;
+  classId: number;
+  className: string;
+  confidence: number;
+  rawConfidence: number;
+  boundingBox: {
+    x: number; // 0-100% normalized
+    y: number; // 0-100% normalized
+    width: number; // 0-100% normalized
+    height: number; // 0-100% normalized
+  };
+  pixelBox: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+  sourceFrameWidth: number;
+  sourceFrameHeight: number;
+  timestamp: string;
+  modelId: string;
+  modelVersion: string;
+  cameraId: string;
+  inferenceId: string;
+  provenance: DetectionProvenance;
+}
+
+export interface DetectionFilterConfig {
+  globalMinConfidence: number;
+  classThresholds: Record<string, number>;
+  displayThreshold: number;
+  eventGenerationThreshold: number;
+  enabledClasses: string[];
+  nmsIouThreshold: number;
+}
+
+export interface MeasuredVisionTelemetry {
+  modelStatus: ModelProviderStatus;
+  modelId: string;
+  modelVersion: string;
+  modelInitTimeMs: number | null;
+  inferenceLatencyMs: number | null;
+  processedFrames: number;
+  skippedFrames: number;
+  cameraFps: number | null;
+  inferenceFps: number | null;
+  activeTracksCount: number;
+  activeDetectionsCount: number;
+  errorCount: number;
+  lastError: string | null;
+  performanceProfile: PerformanceProfile;
+  provenanceMode: DetectionProvenance;
+}
+
+export interface DetectionEventRule {
+  ruleId: string;
+  name: string;
+  objectClass: string;
+  minConfidence: number;
+  minPersistenceSeconds: number;
+  minRepeatedFrames: number;
+  zoneId?: string;
+  cooldownSeconds: number;
+  severity: SeverityLevel;
+  enabled: boolean;
+}
+
 export interface VantaSystemState {
   version: string;
   codename: string;
@@ -308,4 +523,18 @@ export interface VantaSystemState {
   toolExecutions: BrainToolExecutionRecord[];
   timeSeries: TimeSeriesPoint[];
   preferences: AssistantPreferences;
+  // V14.0 Enterprise Extensions
+  visionModel?: VisionModelSpec;
+  activeTracks?: ObjectTrack[];
+  sceneSummaries?: SceneIntelligenceSummary[];
+  correlationPipeline?: CorrelationPipelineStage[];
+  workflows?: AutonomousWorkflow[];
+  memoryGovernance?: MemoryGovernanceState;
+  observability?: SystemObservabilityMetrics;
+  // V15.0 Real-Time Vision Intelligence Extensions
+  detectionFilterConfig?: DetectionFilterConfig;
+  measuredVisionTelemetry?: MeasuredVisionTelemetry;
+  detectionEventRules?: DetectionEventRule[];
+  latestNormalizedDetections?: NormalizedDetection[];
 }
+

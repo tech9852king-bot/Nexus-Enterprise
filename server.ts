@@ -7,42 +7,89 @@ import { GoogleGenAI, Type } from '@google/genai';
 import {
   BRAIN_TOOLS_REGISTRY,
   appendAuditRecord,
+  buildCorrelationPipelineStages,
+  buildSceneIntelligenceSummary,
   createDevicePairingSession,
   createInitialVantaState,
   evaluateCompoundPolicyRule,
+  executeAutonomousWorkflow,
   executeBrainTool,
+  manageConversationMemory,
   runNineLayerBrainPipeline,
   sha256Hex,
   transitionIncidentState,
+  updateObjectTracks,
   verifyAuditChain,
 } from './src/core/engine';
 import {
   AssistantPreferences,
   ConversationMessage,
+  DetectionFilterConfig,
   DeviceEntity,
   IncidentStatus,
+  MeasuredVisionTelemetry,
+  NormalizedDetection,
   SecurityEvent,
   UserRole,
   VantaSystemState,
 } from './src/core/types';
+import {
+  evaluateDetectionEventRules,
+  normalizedToBoundingBoxes,
+  updateCameraObjectTracks,
+} from './src/core/visionPipeline';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const STATE_FILE_PATH = path.resolve(__dirname, '.vanta-state.json');
+
+function hydrateV14State(base: VantaSystemState): VantaSystemState {
+  const fallback = createInitialVantaState();
+  const activeTracks = base.activeTracks || fallback.activeTracks || [];
+  const hydrated: VantaSystemState = {
+    ...base,
+    version: '15.0.0',
+    visionModel: base.visionModel || fallback.visionModel,
+    activeTracks,
+    workflows: base.workflows || fallback.workflows,
+    memoryGovernance: base.memoryGovernance || fallback.memoryGovernance,
+    observability: base.observability || fallback.observability,
+    detectionFilterConfig: base.detectionFilterConfig || fallback.detectionFilterConfig,
+    measuredVisionTelemetry: base.measuredVisionTelemetry || fallback.measuredVisionTelemetry,
+    detectionEventRules: base.detectionEventRules || fallback.detectionEventRules,
+    latestNormalizedDetections: base.latestNormalizedDetections || [],
+  };
+  hydrated.sceneSummaries = hydrated.cameras.map((cam) =>
+    buildSceneIntelligenceSummary(cam, activeTracks)
+  );
+  hydrated.correlationPipeline = buildCorrelationPipelineStages(hydrated);
+  return hydrated;
+}
 
 function loadOrCreateState(): VantaSystemState {
   try {
     if (fs.existsSync(STATE_FILE_PATH)) {
       const raw = fs.readFileSync(STATE_FILE_PATH, 'utf-8');
       const parsed = JSON.parse(raw) as VantaSystemState;
-      if (parsed && parsed.version === '11.0.0' && Array.isArray(parsed.cameras)) {
-        return parsed;
+      if (parsed && Array.isArray(parsed.cameras)) {
+        // On cold server startup, no browser MediaStream is active yet; reset transient live webcam flags to Simulated
+        parsed.cameras = parsed.cameras.map((cam) => ({
+          ...cam,
+          isSimulatedStream: true,
+          connectorState:
+            cam.connectorState === 'Degraded' || cam.connectorState === 'Disconnected'
+              ? cam.connectorState
+              : 'Simulated',
+        }));
+        const hydrated = hydrateV14State(parsed);
+        saveState(hydrated);
+        return hydrated;
       }
     }
   } catch {
     // Fall back to fresh verified baseline state
   }
-  const initial = createInitialVantaState();
+  const initial = hydrateV14State(createInitialVantaState());
   saveState(initial);
   return initial;
 }
@@ -395,7 +442,7 @@ async function startServer() {
     res.json({ state: systemState });
   });
 
-  // Record Measured Camera Frame Telemetry / Event from Local Authorized Webcam or Simulation
+  // Record Measured Camera Frame Telemetry / Real Model Detections from Local Authorized Webcam or Demo
   app.post('/api/cameras/:id/telemetry', (req: Request, res: Response) => {
     const camId = req.params.id;
     const cam = systemState.cameras.find((c) => c.id === camId);
@@ -405,12 +452,59 @@ async function startServer() {
     }
     const nowIso = new Date().toISOString();
     const isLiveWebcam = Boolean(req.body?.isLiveWebcam);
-    const fps = Number(req.body?.fps ?? cam.fps);
-    const latencyMs = Number(req.body?.inferenceLatencyMs ?? cam.inferenceLatencyMs);
-    const motionPct = Number(req.body?.motionScore ?? 0);
+    const fps =
+      typeof req.body?.fps === 'number' && Number.isFinite(req.body.fps)
+        ? Math.max(0, Math.round(req.body.fps))
+        : isLiveWebcam
+        ? cam.fps
+        : 0;
+    const latencyMs =
+      typeof req.body?.inferenceLatencyMs === 'number' &&
+      Number.isFinite(req.body.inferenceLatencyMs)
+        ? Math.max(0, Math.round(req.body.inferenceLatencyMs))
+        : cam.inferenceLatencyMs;
+    const motionPct =
+      typeof req.body?.motionScore === 'number' && Number.isFinite(req.body.motionScore)
+        ? Math.max(0, Number(req.body.motionScore))
+        : 0;
+    const incomingDetections = Array.isArray(req.body?.normalizedDetections)
+      ? (req.body.normalizedDetections as NormalizedDetection[])
+      : null;
+    const incomingTelemetry = (req.body?.measuredVisionTelemetry || null) as Partial<MeasuredVisionTelemetry> | null;
 
-    const newEvent: SecurityEvent | null =
-      motionPct > 12
+    let nextTracks = systemState.activeTracks || [];
+    let updatedActiveDetections = cam.activeDetections;
+    let ruleEvents: SecurityEvent[] = [];
+
+    if (incomingDetections) {
+      nextTracks = updateCameraObjectTracks(nextTracks, incomingDetections, cam.id, cam.zoneId, {
+        nowIso,
+      });
+      updatedActiveDetections =
+        incomingDetections.length > 0 || isLiveWebcam
+          ? normalizedToBoundingBoxes(incomingDetections, nextTracks, cam.zoneId)
+          : cam.activeDetections;
+      ruleEvents = evaluateDetectionEventRules(
+        nextTracks,
+        incomingDetections,
+        systemState.detectionEventRules || [],
+        systemState.events,
+        {
+          tenantId: systemState.tenant.tenantId,
+          cameraId: cam.id,
+          cameraName: cam.name,
+          deviceId: systemState.devices[0]?.id || 'DEV-LOCAL',
+          zoneId: cam.zoneId,
+          zoneName: cam.zoneName,
+          nowIso,
+        }
+      );
+    } else {
+      nextTracks = updateObjectTracks(nextTracks, cam.activeDetections, cam.id, cam.zoneId, nowIso);
+    }
+
+    const motionEvent: SecurityEvent | null =
+      ruleEvents.length === 0 && isLiveWebcam && motionPct > 12
         ? {
             id: `EVT-${Date.now().toString(36).toUpperCase().slice(-4)}`,
             tenantId: systemState.tenant.tenantId,
@@ -423,40 +517,104 @@ async function startServer() {
             category: 'PERIMETER_MOTION',
             severity: motionPct > 28 ? 'HIGH' : 'MEDIUM',
             confidence: 0.93,
-            provenance: isLiveWebcam ? 'Measured' : 'Simulated',
-            summary: `${isLiveWebcam ? 'Measured live webcam' : 'Simulated stream'} motion displacement (${motionPct.toFixed(
+            provenance: 'Measured',
+            summary: `Measured live webcam track centroid displacement (${motionPct.toFixed(
               1
             )}%) recorded on ${cam.name}.`,
             evidenceMetadata: {
-              objectCount: cam.activeDetections.length,
-              modelVersion: isLiveWebcam ? 'WebRTC-CanvasDiff-640px' : 'COCO-SSD-640px-v2.4',
+              objectCount: updatedActiveDetections.length,
+              modelVersion: 'tfjs-coco-ssd-lite_mobilenet_v2@2.2.3',
               frameHash: sha256Hex(`${cam.id}:${nowIso}:${motionPct}`),
             },
             verified: true,
           }
         : null;
 
-    systemState = {
+    const appendedEvents = [
+      ...ruleEvents,
+      ...(motionEvent ? [motionEvent] : []),
+    ];
+
+    const nextCameras = systemState.cameras.map((c) =>
+      c.id === camId
+        ? {
+            ...c,
+            isSimulatedStream: !isLiveWebcam,
+            connectorState: isLiveWebcam ? ('Connected' as const) : ('Simulated' as const),
+            fps: isLiveWebcam ? fps : c.fps,
+            inferenceLatencyMs: latencyMs,
+            lastHeartbeatIso: nowIso,
+            activeDetections: updatedActiveDetections,
+            occupancyCount:
+              updatedActiveDetections.filter((d) => d.label === 'person').length ||
+              c.occupancyCount,
+          }
+        : c
+    );
+
+    const prevOtherDetections = (systemState.latestNormalizedDetections || []).filter(
+      (d) => d.cameraId !== cam.id
+    );
+    const nextNormalizedDetections = incomingDetections
+      ? [...incomingDetections, ...prevOtherDetections].slice(0, 50)
+      : systemState.latestNormalizedDetections || [];
+
+    systemState = hydrateV14State({
       ...systemState,
       syncRevision: systemState.syncRevision + 1,
       lastCloudSyncIso: nowIso,
-      cameras: systemState.cameras.map((c) =>
-        c.id === camId
-          ? {
-              ...c,
-              isSimulatedStream: !isLiveWebcam,
-              connectorState: 'Connected',
-              fps,
-              inferenceLatencyMs: latencyMs,
-              lastHeartbeatIso: nowIso,
-            }
-          : c
-      ),
-      events: newEvent ? [newEvent, ...systemState.events.slice(0, 49)] : systemState.events,
-    };
+      cameras: nextCameras,
+      activeTracks: nextTracks,
+      latestNormalizedDetections: nextNormalizedDetections,
+      measuredVisionTelemetry: systemState.measuredVisionTelemetry
+        ? {
+            ...systemState.measuredVisionTelemetry,
+            ...(incomingTelemetry || {}),
+            activeTracksCount: nextTracks.length,
+            activeDetectionsCount: nextNormalizedDetections.length,
+          }
+        : undefined,
+      events:
+        appendedEvents.length > 0
+          ? [...appendedEvents, ...systemState.events].slice(0, 50)
+          : systemState.events,
+      observability: systemState.observability
+        ? {
+            ...systemState.observability,
+            videoReadiness: isLiveWebcam ? 'READY' : 'SIMULATED_CANVAS',
+            avgInferenceLatencyMs: latencyMs,
+          }
+        : undefined,
+    });
 
     broadcastSyncState('CAMERA_TELEMETRY');
-    res.json({ state: systemState, eventCreated: newEvent });
+    res.json({ state: systemState, eventCreated: appendedEvents[0] || null });
+  });
+
+  // Update V15.0 Detection Filter Configuration & Performance Profile
+  app.post('/api/vision/config', (req: Request, res: Response) => {
+    const nowIso = new Date().toISOString();
+    const filterPatch = (req.body?.filterConfig || {}) as Partial<DetectionFilterConfig>;
+    const telemetryPatch = {
+      ...(req.body?.telemetryPatch || {}),
+      ...(req.body?.performanceProfile
+        ? { performanceProfile: req.body.performanceProfile }
+        : {}),
+    } as Partial<MeasuredVisionTelemetry>;
+
+    systemState = hydrateV14State({
+      ...systemState,
+      syncRevision: systemState.syncRevision + 1,
+      lastCloudSyncIso: nowIso,
+      detectionFilterConfig: systemState.detectionFilterConfig
+        ? { ...systemState.detectionFilterConfig, ...filterPatch }
+        : undefined,
+      measuredVisionTelemetry: systemState.measuredVisionTelemetry
+        ? { ...systemState.measuredVisionTelemetry, ...telemetryPatch }
+        : undefined,
+    });
+    broadcastSyncState('VISION_CONFIG_UPDATED');
+    res.json({ state: systemState });
   });
 
   // Update ALEANA Voice & Assistant Preferences
@@ -616,6 +774,7 @@ Return JSON matching the schema.`,
       directAnswer,
       keyFindings,
       evidenceCitations: pipelineResult.evidenceCitations,
+      epistemicBreakdown: pipelineResult.epistemicBreakdown,
       uncertaintyDisclosure: pipelineResult.uncertaintyDisclosure,
       recommendedNextAction,
       layerTraces: pipelineResult.layerTraces,
@@ -624,18 +783,48 @@ Return JSON matching the schema.`,
       modelUsed,
     };
 
-    systemState = {
+    const nextConversations = [...systemState.conversations, userMsg, assistantMsg].slice(-40);
+    systemState = hydrateV14State({
       ...systemState,
       syncRevision: systemState.syncRevision + 1,
       lastCloudSyncIso: assistantMsg.timestampIso,
-      conversations: [...systemState.conversations, userMsg, assistantMsg].slice(-40),
-    };
+      conversations: nextConversations,
+      memoryGovernance: systemState.memoryGovernance
+        ? {
+            ...systemState.memoryGovernance,
+            conversationTurnCount: nextConversations.length,
+          }
+        : undefined,
+    });
 
     broadcastSyncState('BRAIN_CONVERSATION_UPDATED');
     res.json({
       message: assistantMsg,
       state: systemState,
     });
+  });
+
+  // Autonomous Workflow Execution with Human Approval Boundary (Section 12)
+  app.post('/api/workflows/:id/execute', (req: Request, res: Response) => {
+    const workflowId = req.params.id;
+    const approvedByHuman = Boolean(req.body?.approvedByHuman);
+    const result = executeAutonomousWorkflow(systemState, workflowId, approvedByHuman);
+    if (result.error) {
+      res.status(400).json({ error: result.error, state: systemState });
+      return;
+    }
+    systemState = hydrateV14State(result.updatedState);
+    broadcastSyncState('WORKFLOW_EXECUTED');
+    res.json({ workflow: result.workflow, state: systemState });
+  });
+
+  // Conversation Memory & Context Governance (Section 9)
+  app.post('/api/memory/manage', (req: Request, res: Response) => {
+    const action = req.body?.action === 'UPDATE_RETENTION' ? 'UPDATE_RETENTION' : 'RESET_CONVERSATION';
+    const retentionDays = typeof req.body?.retentionDays === 'number' ? req.body.retentionDays : undefined;
+    systemState = hydrateV14State(manageConversationMemory(systemState, action, retentionDays));
+    broadcastSyncState('MEMORY_GOVERNANCE_UPDATED');
+    res.json({ state: systemState });
   });
 
   // Audit Chain Verification Endpoint

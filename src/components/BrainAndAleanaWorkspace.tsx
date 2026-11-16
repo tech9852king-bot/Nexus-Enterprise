@@ -31,6 +31,11 @@ interface BrainAndAleanaWorkspaceProps {
   ) => Promise<ConversationMessage | null>;
   onExecuteTool: (toolName: string, args?: Record<string, unknown>) => Promise<void>;
   onUpdatePreferences: (prefs: Partial<AssistantPreferences>) => Promise<void>;
+  onExecuteWorkflow?: (workflowId: string, approvedByHuman?: boolean) => Promise<void>;
+  onManageMemory?: (
+    action: 'RESET_CONVERSATION' | 'UPDATE_RETENTION',
+    retentionDays?: number
+  ) => Promise<void>;
 }
 
 type VoiceStage = 'IDLE' | 'LISTENING' | 'PROCESSING' | 'SPEAKING' | 'INTERRUPTED' | 'ERROR';
@@ -41,6 +46,8 @@ export const BrainAndAleanaWorkspace: React.FC<BrainAndAleanaWorkspaceProps> = (
   onSendQuery,
   onExecuteTool,
   onUpdatePreferences,
+  onExecuteWorkflow,
+  onManageMemory,
 }) => {
   const [queryInput, setQueryInput] = useState('');
   const [selectedLang, setSelectedLang] = useState<'en' | 'hi' | 'hinglish'>(
@@ -51,9 +58,27 @@ export const BrainAndAleanaWorkspace: React.FC<BrainAndAleanaWorkspaceProps> = (
     'ALL' | BrainToolDefinition['category']
   >('ALL');
   const [voiceStage, setVoiceStage] = useState<VoiceStage>('IDLE');
-  const [voiceStatusText, setVoiceStatusText] = useState<string>(
-    'ALEANA Bilingual Voice Engine Ready (Push-to-Talk or Text)'
-  );
+  const [speechRecognitionSupported] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return Boolean(
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    );
+  });
+  const [speechSynthesisSupported] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return 'speechSynthesis' in window;
+  });
+  const [voiceStatusText, setVoiceStatusText] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      const hasRec = Boolean(
+        (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+      );
+      return hasRec
+        ? 'Voice capability available · Push-to-Talk or Text input ready'
+        : 'Voice recognition unsupported in current browser · Text & Speech Synthesis fallback active';
+    }
+    return 'ALEANA Bilingual Engine Ready';
+  });
   const recognitionRef = useRef<any>(null);
 
   const latestAssistantMsg = [...state.conversations]
@@ -63,6 +88,7 @@ export const BrainAndAleanaWorkspace: React.FC<BrainAndAleanaWorkspaceProps> = (
   // Speak response with Web Speech Synthesis when enabled
   const speakText = (text: string, lang: 'en' | 'hi' | 'hinglish') => {
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
+      setVoiceStatusText('Speech synthesis unsupported in current browser.');
       return;
     }
     try {
@@ -140,20 +166,10 @@ export const BrainAndAleanaWorkspace: React.FC<BrainAndAleanaWorkspaceProps> = (
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
     if (!SpeechRec) {
-      // Honest disclosure + instant voice pipeline test when browser lacks hardware SpeechRecognition
-      setVoiceStage('LISTENING');
+      setVoiceStage('ERROR');
       setVoiceStatusText(
-        'Browser SpeechRecognition unavailable in headless mode · Capturing sample bilingual voice command...'
+        'Voice capability unsupported in current browser (Web Speech Recognition API unavailable). Please use the text input or preset query buttons below.'
       );
-      const sampleCommand =
-        selectedLang === 'hinglish'
-          ? 'Abhi kitne incidents active hain aur camera status kya hai?'
-          : selectedLang === 'hi'
-          ? 'सक्रिय घटनाओं और कैमरों की स्थिति बताएं'
-          : 'Summarize unresolved incidents and check camera connection quality.';
-      setTimeout(() => {
-        handleSubmitQuery(sampleCommand, 'VOICE_ALEANA');
-      }, 450);
       return;
     }
 
@@ -174,15 +190,23 @@ export const BrainAndAleanaWorkspace: React.FC<BrainAndAleanaWorkspaceProps> = (
           handleSubmitQuery(transcript, 'VOICE_ALEANA');
         }
       };
-      rec.onerror = () => {
-        setVoiceStage('IDLE');
-        setVoiceStatusText(
-          'Microphone capture unavailable in current environment · Use text input or quick voice presets below.'
-        );
+      rec.onerror = (err: any) => {
+        setVoiceStage('ERROR');
+        const errCode = err?.error || 'unavailable';
+        if (errCode === 'not-allowed' || errCode === 'service-not-allowed') {
+          setVoiceStatusText(
+            'Voice permission denied by browser/user · Grant microphone permission or use text fallback below.'
+          );
+        } else {
+          setVoiceStatusText(
+            `Microphone capture error (${errCode}) · Use text input or preset buttons below.`
+          );
+        }
       };
       rec.start();
     } catch {
-      setVoiceStage('IDLE');
+      setVoiceStage('ERROR');
+      setVoiceStatusText('Failed to start browser SpeechRecognition · Text fallback active.');
     }
   };
 
@@ -291,10 +315,16 @@ export const BrainAndAleanaWorkspace: React.FC<BrainAndAleanaWorkspaceProps> = (
           </button>
 
           <div>
-            <div className="flex items-center gap-2 text-xs font-mono text-slate-500 dark:text-slate-400">
+            <div className="flex flex-wrap items-center gap-2 text-xs font-mono text-slate-500 dark:text-slate-400">
               <span>ALEANA VOICE STATE: {voiceStage}</span>
               <span>·</span>
-              <span>MODE: {state.preferences.conversationMode}</span>
+              <span>
+                STT: {speechRecognitionSupported ? 'AVAILABLE' : 'UNSUPPORTED (TEXT FALLBACK)'}
+              </span>
+              <span>·</span>
+              <span>
+                TTS: {speechSynthesisSupported ? 'AVAILABLE' : 'UNSUPPORTED'}
+              </span>
               <span>·</span>
               <span>LANG: {selectedLang.toUpperCase()}</span>
             </div>
@@ -386,6 +416,23 @@ export const BrainAndAleanaWorkspace: React.FC<BrainAndAleanaWorkspaceProps> = (
                 {msg.evidenceCitations && msg.evidenceCitations.length > 0 && (
                   <div className="mt-2.5 text-xs text-slate-500 dark:text-slate-400 font-mono">
                     Citations: {msg.evidenceCitations.join(' · ')}
+                  </div>
+                )}
+
+                {msg.epistemicBreakdown && msg.epistemicBreakdown.length > 0 && (
+                  <div className="mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-800 space-y-1.5">
+                    <div className="text-xs font-mono font-semibold text-slate-700 dark:text-slate-300">
+                      EPISTEMIC REASONING BREAKDOWN (SECTION 7.4):
+                    </div>
+                    {msg.epistemicBreakdown.map((item, idx) => (
+                      <div key={idx} className="text-xs text-slate-600 dark:text-slate-400">
+                        <span className="font-mono font-semibold text-slate-900 dark:text-slate-200">
+                          [{item.category}]
+                        </span>{' '}
+                        {item.statement}{' '}
+                        <span className="font-mono text-slate-400">({item.sourceRef})</span>
+                      </div>
+                    ))}
                   </div>
                 )}
 
@@ -694,6 +741,168 @@ export const BrainAndAleanaWorkspace: React.FC<BrainAndAleanaWorkspaceProps> = (
               </div>
             );
           })}
+        </div>
+      </div>
+
+      {/* V14.0 Autonomous Workflow Engine & Conversation Memory Governance (Sections 9 & 12) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+        {/* Autonomous Workflow Engine */}
+        <div className="lg:col-span-8 border border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-900 p-5 space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-800 pb-3">
+            <div>
+              <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                <Cpu className="w-4 h-4 text-sky-500" />
+                Autonomous Workflow Engine & Human Approval Boundary
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                Multi-step orchestrated workflows with explicit Human Approval Boundary gating for consequential actions
+              </p>
+            </div>
+            <span className="text-xs font-mono text-slate-500 tabular-nums">
+              {(state.workflows || []).length} Registered Workflows
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+            {(state.workflows || []).map((wf) => {
+              const isAwaiting = wf.status === 'AWAITING_APPROVAL';
+              return (
+                <div
+                  key={wf.id}
+                  data-testid={`workflow-card-${wf.id}`}
+                  className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 flex flex-col justify-between gap-3"
+                >
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between text-xs font-mono tabular-nums">
+                      <span className="font-semibold text-slate-900 dark:text-slate-100">
+                        {wf.id} · {wf.triggerType}
+                      </span>
+                      <span
+                        className={
+                          isAwaiting
+                            ? 'text-amber-600 dark:text-amber-400 font-semibold'
+                            : wf.status === 'COMPLETED'
+                            ? 'text-emerald-600 dark:text-emerald-400 font-semibold'
+                            : 'text-sky-600 dark:text-sky-400'
+                        }
+                      >
+                        {wf.status}
+                      </span>
+                    </div>
+                    <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                      {wf.name}
+                    </h4>
+                    <p className="text-xs text-slate-600 dark:text-slate-400">
+                      {wf.description}
+                    </p>
+                    <div className="text-xs font-mono text-slate-500 pt-1">
+                      Steps: {wf.steps.join(' -> ')}
+                    </div>
+                    {wf.lastResultSummary && (
+                      <div className="text-xs text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-slate-950 p-2 rounded border border-slate-200/70 dark:border-slate-800 mt-1">
+                        {wf.lastResultSummary}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
+                    <span className="text-xs font-mono text-slate-500">
+                      {wf.requiresHumanApproval ? 'HUMAN APPROVAL REQUIRED' : 'AUTONOMOUS READ-ONLY'}
+                    </span>
+                    {isAwaiting ? (
+                      <button
+                        type="button"
+                        onClick={() => onExecuteWorkflow?.(wf.id, true)}
+                        className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 transition-colors whitespace-nowrap shrink-0"
+                      >
+                        Approve & Execute
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => onExecuteWorkflow?.(wf.id, false)}
+                        className="px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-900 text-white dark:bg-slate-800 dark:text-sky-300 hover:opacity-90 transition-opacity whitespace-nowrap shrink-0"
+                      >
+                        Execute Workflow
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Conversation Memory & Context Governance */}
+        <div className="lg:col-span-4 border border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-900 p-5 flex flex-col justify-between space-y-4">
+          <div className="space-y-3">
+            <div className="border-b border-slate-200 dark:border-slate-800 pb-3">
+              <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">
+                Conversation & Memory Governance
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                Section 9 Context Isolation · PII Minimization · Retention Control
+              </p>
+            </div>
+
+            {state.memoryGovernance && (
+              <div className="space-y-2.5 text-xs font-mono tabular-nums">
+                <div className="flex items-center justify-between py-1.5 border-b border-slate-100 dark:border-slate-800">
+                  <span className="text-slate-500">Conversation Turns</span>
+                  <span className="font-semibold text-slate-900 dark:text-slate-100">
+                    {state.memoryGovernance.conversationTurnCount} turns
+                  </span>
+                </div>
+                <div className="flex items-center justify-between py-1.5 border-b border-slate-100 dark:border-slate-800">
+                  <span className="text-slate-500">Operational Memory Records</span>
+                  <span className="font-semibold text-slate-900 dark:text-slate-100">
+                    {state.memoryGovernance.operationalMemoryCount} verified records
+                  </span>
+                </div>
+                <div className="flex items-center justify-between py-1.5 border-b border-slate-100 dark:border-slate-800">
+                  <span className="text-slate-500">Raw Video Stored</span>
+                  <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
+                    FALSE (Metadata Only)
+                  </span>
+                </div>
+                <div className="flex items-center justify-between py-1.5 border-b border-slate-100 dark:border-slate-800">
+                  <span className="text-slate-500">PII Minimization</span>
+                  <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
+                    ACTIVE
+                  </span>
+                </div>
+                <div className="py-1.5">
+                  <div className="text-slate-500 mb-1.5">Retention Period Policy</div>
+                  <div className="flex items-center gap-1.5">
+                    {[7, 30, 90].map((days) => (
+                      <button
+                        key={days}
+                        type="button"
+                        onClick={() => onManageMemory?.('UPDATE_RETENTION', days)}
+                        className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
+                          state.memoryGovernance?.retentionPeriodDays === days
+                            ? 'bg-sky-600 text-white'
+                            : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
+                        }`}
+                      >
+                        {days} Days
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-2">
+            <button
+              type="button"
+              onClick={() => onManageMemory?.('RESET_CONVERSATION')}
+              className="w-full px-3.5 py-2 text-xs font-semibold rounded-lg border border-rose-500/40 text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 transition-colors"
+            >
+              Reset Conversation Memory (Preserve Audit Ledger)
+            </button>
+          </div>
         </div>
       </div>
     </div>
