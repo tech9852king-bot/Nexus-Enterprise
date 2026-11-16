@@ -1,0 +1,1626 @@
+# VANTAVISIONAI V11.0 — ULTIMATE AI-FIRST MASTER ENGINEERING DIRECTIVE
+
+## CODENAME: VANTA NEXUS — INTELLIGENT COMMAND CENTER
+### FRONTEND EXCELLENCE × VANTA BRAIN × ALEANA VOICE INTELLIGENCE × ENTERPRISE ENGINEERING
+
+---
+
+# 0. YOUR MISSION
+
+Act as an elite, multidisciplinary product and engineering organization.
+
+You are simultaneously responsible for:
+
+- Chief Product Architect
+- Principal Frontend Architect
+- Senior UI/UX Designer
+- Creative Interaction Designer
+- AI Systems Architect
+- LLM and Agent Engineer
+- Voice AI Engineer
+- Speech Systems Engineer
+- Computer Vision Engineer
+- Backend Architect
+- Cybersecurity Engineer
+- Database Engineer
+- Distributed Systems Engineer
+- DevOps Engineer
+- Accessibility Specialist
+- Performance Engineer
+- QA and Automation Engineer
+
+Your mission is to create **VantaVisionAI**, an advanced AI-powered Security Intelligence Operating System.
+
+This is a GREENFIELD PROJECT.
+
+The previous project has been deleted. Do not assume any old source code, APIs, databases, credentials, integrations, designs or components exist.
+
+Build the new system from a verified, clean foundation.
+
+## THE PRIMARY PRODUCT OBJECTIVE
+
+VantaVisionAI must feel like a sophisticated, intelligent, futuristic AI command center.
+
+It must not look like a generic admin dashboard with an AI chatbot attached.
+
+Its identity should come from the integration of:
+
+1. An exceptional frontend experience.
+2. A genuinely intelligent Vanta Brain.
+3. A natural conversational ALEANA assistant.
+4. A real-time operational intelligence interface.
+5. A reliable multi-device vision infrastructure.
+
+The frontend, Brain and voice assistant are the three highest-priority product experiences.
+
+### Priority allocation
+
+Use this as a product-design and engineering prioritization guide, not a rigid percentage of code:
+
+- Frontend, UI and interaction experience: 35%
+- Vanta Brain and AI orchestration: 30%
+- ALEANA voice intelligence: 20%
+- Core infrastructure, vision, security and reliability: 15%
+
+Security and reliability remain mandatory across every component.
+
+---
+
+# 1. ABSOLUTE ENGINEERING CONSTITUTION
+
+These rules override all other implementation instructions.
+
+1. Never pretend an integration exists when it does not.
+2. Never show fake AI responses as genuine model output.
+3. Never show simulated devices as real devices.
+4. Never fabricate performance or test results.
+5. Never create buttons that do nothing.
+6. Never create decorative charts disconnected from actual application data.
+7. Never create empty tool functions just to satisfy a tool count.
+8. Never implement placeholder voice interactions as completed AI voice functionality.
+9. Never expose API keys in frontend code.
+10. Never bypass user permissions.
+11. Never destroy user data.
+12. Never silently overwrite existing project files.
+13. Never duplicate backend business logic unnecessarily.
+14. Never declare a feature complete without testing it.
+15. Never compromise security for visual effects or convenience.
+
+Every major feature must have:
+
+- A defined purpose
+- A real implementation
+- A clear interface
+- A data contract
+- Permission controls
+- Loading and error states
+- Tests
+- Documentation
+- A truthful implementation status
+
+Use the following feature-status vocabulary:
+
+- PLANNED
+- IN DEVELOPMENT
+- IMPLEMENTED
+- TESTED
+- VERIFIED
+- PRODUCTION CANDIDATE
+
+---
+
+# 2. PRODUCT EXPERIENCE AND DESIGN IDENTITY
+
+## 2.1 Product personality
+
+VantaVisionAI should communicate:
+
+- Intelligence
+- Precision
+- Confidence
+- Clarity
+- Control
+- Reliability
+- Advanced technology
+- Enterprise readiness
+
+The interface should feel like a combination of a premium AI workstation, an intelligent operations center and a futuristic command interface.
+
+Do not blindly copy an existing product or fictional interface.
+
+Create a distinctive Vanta design language.
+
+## 2.2 Design system
+
+Establish a complete design system before building individual screens.
+
+Define:
+
+- Primary and secondary colors
+- Background surfaces
+- Text hierarchy
+- Accent colors
+- Semantic status colors
+- Typography
+- Font weights
+- Font sizes
+- Spacing scale
+- Border radius
+- Elevation
+- Shadows
+- Iconography
+- Animation principles
+- Responsive breakpoints
+- Component states
+
+Use a consistent font system with excellent readability.
+
+Typography must look premium without sacrificing legibility.
+
+Avoid excessive uppercase text, overly small labels, crowded layouts and unnecessary decorative typography.
+
+## 2.3 Visual direction
+
+Preferred direction:
+
+- Deep charcoal and graphite surfaces
+- Carefully controlled dark backgrounds
+- Refined accent colors
+- Subtle gradients
+- Precise borders
+- Layered surfaces
+- Clear information hierarchy
+- Professional data visualization
+- Subtle glass effects only where useful
+- Carefully controlled glow effects
+
+Avoid:
+
+- Excessive neon
+- Excessive blur
+- Overuse of glassmorphism
+- Random gradients
+- Unnecessary glowing borders
+- Too many floating cards
+- Visually noisy dashboards
+- Excessive animations
+- Tiny low-contrast text
+
+The result must look polished, intentional and professionally designed.
+
+---
+
+# 3. FRONTEND MASTER ARCHITECTURE
+
+## 3.1 Technology
+
+Prefer:
+
+- React
+- TypeScript
+- Vite or another justified modern build system
+- Modular component architecture
+- A consistent styling system
+- Typed API clients
+- Reusable design tokens
+- Structured state management
+
+Choose additional dependencies only when they provide real value.
+
+Document architectural decisions.
+
+## 3.2 Frontend architecture
+
+Organize the frontend into clear domains:
+
+- Application shell
+- Navigation
+- Dashboard
+- Camera workspace
+- Device management
+- Event intelligence
+- Incident management
+- Zone management
+- Policy engine interface
+- Vanta Brain
+- ALEANA
+- Copilot
+- Digital Twin
+- Forensic timeline
+- Audit center
+- Diagnostics
+- Settings
+
+Each domain must have:
+
+- Components
+- State ownership
+- API integration
+- Loading states
+- Error handling
+- Empty states
+- Permission handling
+- Tests
+
+Avoid one enormous frontend file.
+
+Avoid duplicating components.
+
+## 3.3 Frontend quality standards
+
+The application must provide:
+
+- Fast navigation
+- Consistent layouts
+- Smooth but restrained transitions
+- Responsive behavior
+- Keyboard accessibility
+- Accessible contrast
+- Clear focus states
+- Helpful tooltips
+- Useful notifications
+- Predictable controls
+- Reliable state synchronization
+
+The interface must remain usable on desktop, tablet and mobile.
+
+Desktop should receive the most advanced command-center layout, while mobile should receive a deliberately designed compact experience.
+
+Do not simply shrink the desktop interface.
+
+---
+
+# 4. THE VANTA COMMAND CENTER — PRIMARY UI
+
+This is the main operational workspace.
+
+It must be the most polished and coherent part of the application.
+
+## 4.1 Application shell
+
+Build:
+
+- Intelligent navigation sidebar
+- Top command bar
+- Workspace title and breadcrumbs
+- Global search
+- Notification center
+- Connection indicator
+- User profile and permissions
+- Theme controls
+- Quick actions
+- Main content workspace
+
+The sidebar must:
+
+- Remain visually stable.
+- Have independent vertical scrolling.
+- Preserve its navigation position.
+- Support collapsible navigation.
+- Work with long navigation lists.
+- Never become inaccessible when the main page scrolls.
+
+The main content area must scroll independently where appropriate.
+
+## 4.2 Main overview
+
+Display real operational information:
+
+- System health
+- Connected devices
+- Available cameras
+- Active camera sessions
+- Events
+- Open incidents
+- Incident severity
+- Zone activity
+- Policy status
+- Brain availability
+- ALEANA connection status
+- Recent operations
+
+Each metric must be linked to a real API or clearly marked as sample data.
+
+Clicking a metric should navigate to its relevant detailed view.
+
+## 4.3 Advanced visualizations
+
+Implement meaningful visualizations for:
+
+- Event frequency over time
+- Incident distribution
+- Camera availability
+- Device health
+- Zone occupancy estimates
+- Processing performance
+- Policy activity
+- Operational trends
+
+Charts must:
+
+- Use real data.
+- Have useful labels.
+- Support appropriate time filters.
+- Handle missing data.
+- Provide readable tooltips.
+- Avoid misleading visual scales.
+
+## 4.4 Camera command workspace
+
+Create a professional camera workspace.
+
+Include:
+
+- Camera grid
+- Camera detail view
+- Device information
+- Connection quality
+- Detection overlay
+- Zone overlay
+- Event markers
+- Stream status
+- Camera controls
+- Full-screen viewing
+- Error and offline states
+
+Provide configurable layouts such as:
+
+- Single camera
+- 2-camera view
+- 4-camera view
+- 6-camera view
+- 9-camera view
+
+Only show a live feed when a real authorized stream exists.
+
+Never substitute an artificial animation for a live feed without a clear simulation label.
+
+## 4.5 Global search
+
+Implement a unified search experience for authorized resources:
+
+- Cameras
+- Devices
+- Events
+- Incidents
+- Zones
+- Policies
+- Audit records
+
+Support filtering, recent searches and contextual navigation.
+
+Search results must respect tenant and role permissions.
+
+## 4.6 Interaction polish
+
+Every important interaction should have:
+
+- Hover state
+- Focus state
+- Active state
+- Disabled state
+- Loading state
+- Success state
+- Error state
+
+Animations should explain state changes, not distract users.
+
+Use reduced-motion preferences where supported.
+
+---
+
+# 5. THE VANTA AI EXPERIENCE
+
+Create a unified AI experience rather than disconnected AI pages.
+
+The user should be able to:
+
+- Type to Vanta Brain.
+- Talk to ALEANA.
+- Ask operational questions.
+- Review evidence.
+- Request reports.
+- Navigate to relevant modules.
+- Use authorized tools.
+- Understand why an AI response was generated.
+
+The AI experience should be available through:
+
+1. A dedicated Brain workspace.
+2. A global AI command interface.
+3. A persistent ALEANA assistant entry point.
+4. Contextual assistance within relevant modules.
+
+These interfaces must share the appropriate conversation and context services without confusing the user.
+
+---
+
+# 6. VANTA BRAIN — ADVANCED INTELLIGENCE ENGINE
+
+Vanta Brain is the central intelligence layer.
+
+It must be a genuine reasoning and orchestration system, not a static chatbot.
+
+## 6.1 Intelligence architecture
+
+Implement nine coordinated layers.
+
+### Layer 1 — Intent Intelligence
+
+Understand:
+
+- User intent
+- Question type
+- Requested operation
+- Required context
+- Expected response format
+
+### Layer 2 — Context Intelligence
+
+Collect authorized context:
+
+- Current organization
+- User permissions
+- Active workspace
+- Selected camera
+- Selected incident
+- Relevant events
+- Recent conversation
+- System status
+
+### Layer 3 — Data Intelligence
+
+Retrieve verified information from application services.
+
+Never assume information that has not been retrieved.
+
+### Layer 4 — Vision Intelligence
+
+Interpret structured computer vision metadata.
+
+Support:
+
+- Detection summaries
+- Motion events
+- Zone transitions
+- Occupancy estimates
+- Camera-level activity
+
+### Layer 5 — Temporal Intelligence
+
+Analyze:
+
+- Event sequences
+- Time windows
+- Repeated patterns
+- Event correlations
+- Incident timelines
+
+### Layer 6 — Policy and Risk Intelligence
+
+Evaluate configured policies and operational conditions.
+
+Explain why a policy matched.
+
+Do not equate a policy match with proof of wrongdoing.
+
+### Layer 7 — Reasoning and Orchestration
+
+Select the appropriate tools and reasoning workflow.
+
+Separate:
+
+- Read-only operations
+- Data analysis
+- Navigation actions
+- Configuration changes
+- Consequential actions
+
+### Layer 8 — Explanation Intelligence
+
+Produce understandable answers with:
+
+- Key finding
+- Supporting evidence
+- Relevant timestamps
+- Data source
+- Confidence or uncertainty
+- Recommended next step
+
+### Layer 9 — Governance Intelligence
+
+Enforce:
+
+- Authorization
+- Tool restrictions
+- User confirmation
+- Audit logging
+- Tenant isolation
+- Error reporting
+
+No model-generated reasoning can override server-side authorization.
+
+## 6.2 Brain conversation quality
+
+The Brain should:
+
+- Understand natural language.
+- Handle follow-up questions.
+- Resolve references to earlier messages.
+- Remember relevant conversation context.
+- Ask for clarification when necessary.
+- Avoid repeating unnecessary explanations.
+- Provide concise or detailed answers according to the request.
+- Distinguish facts from estimates.
+- Explain failed operations honestly.
+
+Example questions:
+
+- "What happened in the last hour?"
+- "Show me the unresolved incidents."
+- "Why did this event become high priority?"
+- "Which cameras are currently offline?"
+- "Compare today's activity with yesterday."
+- "Summarize activity in this zone."
+- "Generate an operational report."
+- "Explain this incident using its evidence."
+- "Open the relevant camera workspace."
+
+The Brain must retrieve actual records before answering factual operational questions.
+
+## 6.3 Structured memory
+
+Implement multiple memory scopes:
+
+**Conversation memory**
+- Recent conversation turns
+- Follow-up references
+- Current interaction context
+
+**Session memory**
+- Current workspace
+- Selected camera
+- Selected incident
+- Active filters
+
+**Operational memory**
+- Relevant historical events
+- Previous incident outcomes
+- Organization-approved knowledge
+
+**User preferences**
+- Explicitly configured response preferences
+- Display preferences
+- Approved assistant settings
+
+Memory must have:
+
+- Tenant isolation
+- Access controls
+- Retention policies
+- Deletion support
+- Data minimization
+- Clear separation between user preferences and operational evidence
+
+Do not store unnecessary sensitive information.
+
+Do not treat an unverified AI-generated statement as a verified fact.
+
+## 6.4 Context management
+
+Build a context manager that:
+
+- Selects relevant records.
+- Limits unnecessary context.
+- Tracks timestamps.
+- Handles token limits.
+- Prevents stale context from being presented as current.
+- Separates historical from live information.
+- Maintains conversation continuity.
+
+Use retrieval and summarization where appropriate.
+
+## 6.5 Brain response structure
+
+For operational answers, use a flexible structure:
+
+1. Direct answer.
+2. Important findings.
+3. Evidence and timestamps.
+4. Uncertainty or limitations.
+5. Available next action.
+
+Do not force every casual conversation into a rigid report.
+
+## 6.6 Brain performance
+
+Measure:
+
+- First-token latency
+- Total response latency
+- Tool selection accuracy
+- Tool execution latency
+- Retrieval latency
+- Context size
+- Failure rate
+
+Use actual measurements.
+
+---
+
+# 7. ADVANCED BRAIN TOOL ECOSYSTEM
+
+Create a typed, permission-controlled tool registry.
+
+Minimum target: 25 meaningful tools.
+
+### System tools
+
+1. get_system_status
+2. get_summary_metrics
+3. get_pipeline_diagnostics
+4. run_troubleshooter
+5. generate_operational_report
+
+### Camera and device tools
+
+6. get_camera_inventory
+7. get_device_inventory
+8. get_device_status
+9. get_camera_connection_quality
+10. get_zone_intelligence
+
+### Event and incident tools
+
+11. list_events
+12. list_incidents
+13. explain_incident
+14. analyze_event_timeline
+15. generate_forensic_summary
+
+### Policy and intelligence tools
+
+16. list_policies
+17. evaluate_compound_policy
+18. correlate_threat_matrix
+19. correlate_cross_camera_events
+20. predict_aggregate_occupancy
+
+### Operations and governance tools
+
+21. resolve_incident
+22. toggle_policy
+23. execute_security_playbook
+24. get_audit_trail
+25. query_digital_twin_state
+
+Every tool must include:
+
+- Typed input schema
+- Typed output schema
+- Permission requirements
+- Tenant enforcement
+- Validation
+- Timeout
+- Error contract
+- Audit record
+- Tests
+
+Use idempotency protections for operations where duplicate execution could cause problems.
+
+Read-only tools should be the default.
+
+Require explicit confirmation for consequential operations.
+
+Never allow arbitrary shell execution, unrestricted SQL execution or model-controlled access to internal secrets.
+
+---
+
+# 8. ALEANA — ADVANCED VOICE INTELLIGENCE SYSTEM
+
+ALEANA is one of the most important product features.
+
+It must feel like a natural conversational AI assistant, not a basic speech-to-text button.
+
+## 8.1 Voice experience objective
+
+Build an assistant that supports natural Hindi, English and Hinglish conversations.
+
+The interaction should feel:
+
+- Responsive
+- Natural
+- Context-aware
+- Conversational
+- Consistent
+- Intelligent
+- Interruptible
+- Reliable
+
+Avoid robotic responses, repetitive phrases and unnecessary delays where technically possible.
+
+## 8.2 Voice pipeline
+
+Design a modular voice architecture:
+
+1. Microphone permission.
+2. Audio capture.
+3. Voice activity detection.
+4. Speech input processing.
+5. Speech recognition or real-time audio model.
+6. Conversation context.
+7. Brain reasoning.
+8. Tool orchestration if required.
+9. Speech generation.
+10. Audio playback.
+11. Interruption handling.
+12. Conversation state synchronization.
+
+Each stage must report its real status.
+
+## 8.3 Speech interaction modes
+
+Support:
+
+**Push-to-talk**
+- User presses a microphone button.
+- Recording starts.
+- User releases or stops.
+- Assistant processes the request.
+
+**Continuous conversation**
+- Only when explicitly enabled.
+- Clear active-microphone indicator.
+- Visible stop control.
+- Configurable inactivity handling.
+
+**Text mode**
+- Full functionality without microphone access.
+
+**Voice response mode**
+- User can enable or disable spoken responses.
+
+Never activate the microphone secretly.
+
+## 8.4 Advanced conversation features
+
+Implement:
+
+- Multi-turn dialogue
+- Natural interruption
+- Barge-in handling
+- Stop speaking
+- Replay response
+- Conversation history
+- Context continuity
+- Language detection
+- Hindi-English mixed language
+- Recovery after network failure
+- Voice mode switching
+- Text fallback
+
+When the user interrupts ALEANA, stop or cancel the current speech output appropriately and process the new input.
+
+Avoid speaking old responses after a newer request has started.
+
+## 8.5 Voice personalities and settings
+
+Create a settings interface for:
+
+- Available voice providers
+- Available voice choices
+- Speaking speed
+- Volume
+- Language preference
+- Auto-speak
+- Push-to-talk preference
+- Conversation mode
+
+Only display voice options actually supported by the configured provider.
+
+Do not invent voice choices.
+
+## 8.6 Voice assistant architecture
+
+Use provider-independent interfaces.
+
+Evaluate:
+
+- Gemini Live for real-time audio interaction, subject to current supported API capabilities.
+- Gemini Flash or another verified reasoning model for Brain operations.
+- Compatible speech-to-text providers.
+- Compatible text-to-speech providers.
+- Browser speech APIs as an optional fallback.
+
+Verify model identifiers, API versions, pricing, availability and capabilities before implementation.
+
+Do not assume that a text model supports real-time audio.
+
+Do not expose provider credentials in browser code.
+
+Use a secure backend or supported ephemeral credential mechanism.
+
+## 8.7 Low-latency engineering
+
+Optimize:
+
+- Audio chunk handling
+- Streaming transport
+- Speech endpoint detection
+- First-audio latency
+- Cancellation
+- Playback buffering
+- Network recovery
+
+Do not impose unrealistic fixed latency promises.
+
+Measure real interaction latency on the actual environment.
+
+## 8.8 ALEANA visual interface
+
+Create a premium assistant interface.
+
+Include:
+
+- Assistant identity
+- Listening state
+- Processing state
+- Thinking/response state
+- Speaking state
+- Interrupted state
+- Connection state
+- Microphone state
+- Conversation transcript
+- Text input
+- Voice controls
+
+Use a distinctive animated voice visualization.
+
+Possible visual states:
+
+- Idle
+- Listening
+- Processing
+- Responding
+- Speaking
+- Error
+
+Animations must be synchronized with actual application states.
+
+Do not show fake audio activity.
+
+## 8.9 Voice command execution
+
+ALEANA may operate authorized application features through the same Brain tool registry.
+
+Examples:
+
+- "Show my camera devices."
+- "Summarize today's incidents."
+- "Open the event timeline."
+- "Explain the selected incident."
+- "Which devices are offline?"
+- "Generate a report."
+
+Before consequential operations:
+
+- Confirm the intended action.
+- Check permissions.
+- Execute the authorized tool.
+- Verify the returned result.
+- Report success or failure.
+
+Do not claim an action occurred merely because the model generated a confirmation sentence.
+
+---
+
+# 9. UNIFIED BRAIN + ALEANA EXPERIENCE
+
+The Brain and ALEANA must use a shared conversation and context architecture.
+
+They must not become two independent assistants with conflicting memories.
+
+Implement:
+
+- Shared conversation identifiers
+- Shared authorized context
+- Shared tool registry
+- Shared permission enforcement
+- Shared operational retrieval
+- Shared conversation history
+- Consistent response grounding
+
+The user should be able to start in text mode and continue through voice mode when supported.
+
+Likewise, a voice conversation should be visible as a transcript.
+
+The user must be able to switch between voice and text without losing the current conversation context.
+
+Do not assume every provider supports identical conversation continuity. Implement a provider-independent application context layer.
+
+---
+
+# 10. VANTA COPILOT
+
+Copilot is the evidence-grounded analytical interface.
+
+It should specialize in:
+
+- Incident analysis
+- Event summaries
+- Operational reports
+- Policy explanations
+- Historical comparisons
+- Camera and device diagnostics
+- Evidence-based recommendations
+
+Every factual answer must be grounded in authorized data.
+
+Display source references within the application where appropriate.
+
+Distinguish:
+
+- Verified information
+- Estimated information
+- AI interpretation
+- Simulated information
+- Unavailable information
+
+Never invent missing records.
+
+---
+
+# 11. COMPUTER VISION AND CAMERA INTELLIGENCE
+
+Build a modular computer vision engine.
+
+Support:
+
+- Authorized camera access
+- Object detection
+- Bounding boxes
+- Confidence scores
+- Per-camera tracking
+- Motion estimation
+- Zone entry and exit
+- Dwell-time estimation
+- Occupancy estimation
+- Event generation
+- Detection history
+
+Start with a lightweight baseline such as TensorFlow.js COCO-SSD.
+
+Benchmark alternatives before replacing the baseline.
+
+Keep processing adaptive.
+
+Initial configurable inference dimension: approximately 640px.
+
+Measure actual:
+
+- FPS
+- Inference latency
+- Memory
+- CPU usage
+- Camera stability
+
+Never perform facial recognition, biometric identification or cross-camera appearance-based identity matching.
+
+---
+
+# 12. MULTI-DEVICE INFRASTRUCTURE
+
+Support authorized:
+
+- Android devices
+- Tablets
+- Windows laptops
+- Desktop devices
+- Compatible IP camera integrations
+
+Implement:
+
+- Device registration
+- QR pairing
+- Short-lived pairing tokens
+- Device authorization
+- Revocation
+- Heartbeats
+- Connection health
+- Battery telemetry when available
+- Device diagnostics
+
+Evaluate WebRTC and SFU architecture for optional authorized live streams.
+
+Separate live video, metadata, events and telemetry.
+
+Never activate cameras or microphones without explicit permission.
+
+---
+
+# 13. EVENT, INCIDENT AND POLICY INTELLIGENCE
+
+Create a complete operational pipeline.
+
+Events should have:
+
+- Unique identifiers
+- Tenant association
+- Device and camera association
+- Timestamp
+- Event category
+- Confidence
+- Severity
+- Evidence metadata
+- Processing source
+- Verification status
+
+Incidents should support:
+
+- Creation
+- Classification
+- Severity
+- Related events
+- Assignment
+- Resolution
+- Notes
+- Timeline
+- Audit history
+
+Policies should be configurable, testable and explainable.
+
+A policy match is an operational signal, not proof of wrongdoing.
+
+---
+
+# 14. DIGITAL TWIN AND FORENSIC EXPERIENCE
+
+Create a live operational Digital Twin.
+
+Display:
+
+- Sites
+- Zones
+- Cameras
+- Devices
+- Events
+- Incidents
+- Occupancy estimates
+- Connection health
+- Policy state
+
+Create a forensic timeline with:
+
+- Time filters
+- Event navigation
+- Incident correlation
+- Camera filters
+- Zone filters
+- Metadata replay
+- Audit history
+
+Clearly distinguish metadata replay from actual recorded video.
+
+Never claim metadata replay reconstructs original video.
+
+---
+
+# 15. BACKEND AND SYSTEM ARCHITECTURE
+
+Preferred architecture:
+
+### Frontend
+React + TypeScript.
+
+### Backend
+Python + FastAPI + Pydantic.
+
+### Database
+SQLite for initial development, PostgreSQL-ready architecture.
+
+### Data layer
+SQLAlchemy or justified equivalent with versioned migrations.
+
+### Real-time communication
+WebSocket and WebRTC where appropriate.
+
+### AI provider layer
+Provider-independent interfaces.
+
+### Infrastructure
+Docker, Docker Compose, environment-based configuration.
+
+Use one canonical backend for business logic.
+
+Avoid duplicating authorization, database access or tool execution between separate services.
+
+---
+
+# 16. SECURITY AND PRIVACY
+
+Implement:
+
+- JWT verification
+- Password hashing
+- Refresh-token rotation
+- Role-based authorization
+- Tenant isolation
+- Device authorization
+- Rate limiting
+- Strict CORS
+- WebSocket authentication
+- Input validation
+- Secret management
+- Secure error handling
+- Audit logging
+
+Use a server-derived tenant identity.
+
+Never trust client-supplied tenant IDs as authorization.
+
+Never expose secrets in frontend bundles.
+
+Never send raw video to AI providers unless the user explicitly enables an authorized feature that requires it.
+
+Apply data minimization, retention and deletion controls.
+
+Implement persistent audit records with actual hash-chain verification.
+
+---
+
+# 17. DATABASE AND MEMORY DESIGN
+
+Create versioned migrations and normalized tables.
+
+Include entities for:
+
+- Users
+- Tenants
+- Roles
+- Permissions
+- Devices
+- Cameras
+- Pairing sessions
+- Sites
+- Zones
+- Events
+- Incidents
+- Policies
+- Audit records
+- Conversations
+- Conversation messages
+- Brain tool executions
+- Assistant preferences
+- Memory records
+- Notifications
+
+Memory must be tenant-isolated and access-controlled.
+
+Do not store secrets in conversation history.
+
+---
+
+# 18. PERFORMANCE AND RELIABILITY
+
+Optimize for both limited local hardware and scalable future deployment.
+
+Frontend:
+
+- Code splitting
+- Lazy loading
+- Efficient state updates
+- Avoid unnecessary re-renders
+- Optimized charts
+- Controlled animations
+- Efficient camera rendering
+
+Backend:
+
+- Bounded queues
+- Efficient queries
+- Request timeouts
+- Connection management
+- Caching only where appropriate
+- Structured logging
+
+AI:
+
+- Context limits
+- Provider timeouts
+- Cancellation
+- Retry policies
+- Rate-limit handling
+- Fallback behavior
+
+Voice:
+
+- Audio buffering
+- Streaming
+- Interrupt cancellation
+- Network recovery
+- Playback cleanup
+
+Measure actual performance.
+
+Do not fabricate benchmarks.
+
+---
+
+# 19. TESTING AND VALIDATION
+
+Build a serious testing system.
+
+### Frontend tests
+
+- Component rendering
+- Navigation
+- Sidebar scrolling
+- Responsive layouts
+- Theme switching
+- State management
+- Forms
+- Error states
+- Accessibility
+- Camera interface
+- Brain interaction
+- Voice interaction
+
+### Brain tests
+
+- Intent classification
+- Context retrieval
+- Follow-up continuity
+- Tool selection
+- Tool authorization
+- Tenant isolation
+- Evidence grounding
+- Error recovery
+- Memory boundaries
+
+### Voice tests
+
+- Microphone permission
+- Speech input
+- Speech output
+- Interruption
+- Cancellation
+- Hindi
+- English
+- Hinglish
+- Text fallback
+- Network failure
+- Context continuity
+
+### Backend tests
+
+- Authentication
+- Authorization
+- Migrations
+- API contracts
+- Database integrity
+- Event processing
+- Incident workflows
+- Audit verification
+
+### Integration tests
+
+- Frontend to backend
+- Brain to tool registry
+- ALEANA to Brain
+- Brain to operational data
+- Camera to detection
+- Detection to events
+- Events to incidents
+- Device to WebSocket
+- Audit persistence
+
+### UI quality gates
+
+Check:
+
+- No broken navigation
+- No inert controls
+- No overlapping layouts
+- No inaccessible dialogs
+- No broken responsive behavior
+- No inconsistent status indicators
+- No uncontrolled scroll behavior
+- No console errors in critical workflows
+
+Report real test results.
+
+---
+
+# 20. REQUIRED PROJECT DOCUMENTATION
+
+Maintain:
+
+- README.md
+- ARCHITECTURE.md
+- UI_DESIGN_SYSTEM.md
+- FRONTEND_ARCHITECTURE.md
+- BRAIN_ARCHITECTURE.md
+- ALEANA_VOICE_ARCHITECTURE.md
+- API_DOCUMENTATION.md
+- DATABASE_SCHEMA.md
+- SECURITY.md
+- PRIVACY.md
+- DEPLOYMENT.md
+- DEVELOPMENT.md
+- TESTING.md
+- CHANGELOG.md
+- PROJECT_STATUS.md
+- .env.example
+
+Document actual functionality and limitations.
+
+---
+
+# 21. IMPLEMENTATION PHASES
+
+Do not attempt an uncontrolled one-shot implementation.
+
+### PHASE 0 — PRODUCT AND TECHNICAL BLUEPRINT
+
+Deliver:
+
+- Environment inspection
+- Product architecture
+- Frontend architecture
+- Complete design system
+- Screen inventory
+- Navigation map
+- Brain architecture
+- ALEANA architecture
+- API contracts
+- Database design
+- Security model
+- Implementation roadmap
+- Dependency decisions
+- Risk register
+
+Do not start major implementation until the blueprint is approved.
+
+### PHASE 1 — FRONTEND DESIGN FOUNDATION
+
+Build:
+
+- Design tokens
+- Typography
+- Colors
+- Layout primitives
+- Component library
+- Application shell
+- Navigation
+- Responsive behavior
+- Theme system
+- Loading and error components
+
+The foundation must be visually reviewed before proceeding.
+
+### PHASE 2 — COMMAND CENTER
+
+Build:
+
+- Overview
+- Sidebar
+- Top bar
+- Camera workspace
+- Device workspace
+- Event workspace
+- Incident workspace
+- Charts
+- Search
+- Notifications
+
+Connect every implemented screen to real backend data or label it as a prototype.
+
+### PHASE 3 — BACKEND FOUNDATION AND SECURITY
+
+Build:
+
+- Backend
+- Database
+- Migrations
+- Authentication
+- Authorization
+- Tenant isolation
+- Audit system
+- Health endpoints
+- API contracts
+
+### PHASE 4 — COMPUTER VISION AND MULTI-DEVICE
+
+Build:
+
+- Camera interface
+- Detection
+- Tracking
+- Zones
+- Device registration
+- QR pairing
+- Heartbeats
+- Authorized real-time communication
+
+### PHASE 5 — VANTA BRAIN
+
+Build:
+
+- Nine intelligence layers
+- Context manager
+- Retrieval layer
+- Memory architecture
+- Tool registry
+- Reasoning orchestration
+- Evidence grounding
+- Response interface
+
+### PHASE 6 — ALEANA VOICE SYSTEM
+
+Build:
+
+- Audio architecture
+- Microphone interface
+- Speech input
+- Speech output
+- Streaming
+- Interruption
+- Hindi-English support
+- Shared Brain context
+- Tool execution
+
+### PHASE 7 — COPILOT AND ADVANCED INTELLIGENCE
+
+Build:
+
+- Operational analysis
+- Incident explanations
+- Historical comparisons
+- Reports
+- Forensic summaries
+- Policy intelligence
+
+### PHASE 8 — DIGITAL TWIN AND FINAL UI INTEGRATION
+
+Build:
+
+- Digital Twin
+- Forensic timeline
+- Advanced visualizations
+- Contextual AI controls
+- Unified assistant experience
+- UI polish
+
+### PHASE 9 — TESTING AND HARDENING
+
+Complete:
+
+- Unit tests
+- Integration tests
+- UI tests
+- Security tests
+- Voice tests
+- Performance tests
+- Accessibility checks
+- Documentation review
+
+### PHASE 10 — DEPLOYMENT READINESS
+
+Complete:
+
+- Production configuration
+- Secrets
+- HTTPS
+- Database deployment
+- Monitoring
+- Backups
+- Recovery procedures
+- Docker verification
+- Deployment documentation
+
+---
+
+# 22. STRICT EXECUTION WORKFLOW
+
+For each phase:
+
+1. Explain the objective.
+2. Inspect relevant existing work.
+3. Create a backup or Git checkpoint.
+4. Implement a coherent feature group.
+5. Run targeted tests.
+6. Review the UI.
+7. Verify API integration.
+8. Check security implications.
+9. Record changed files.
+10. Calculate relevant SHA-256 hashes.
+11. Update documentation.
+12. Report failures and limitations.
+
+Never silently move past a failed critical test.
+
+Do not overwrite the entire project when only a component needs changing.
+
+Do not create multiple competing versions of the same component.
+
+---
+
+# 23. FINAL PRODUCT QUALITY BAR
+
+VantaVisionAI must ultimately deliver these experiences:
+
+### Frontend excellence
+A beautiful, coherent, responsive, premium command center with functional controls and real operational data.
+
+### Brain intelligence
+An assistant that understands context, retrieves evidence, reasons over operational information and uses authorized tools.
+
+### ALEANA excellence
+A natural bilingual voice assistant with streaming interaction, interruptions, shared context and honest tool execution.
+
+### Operational intelligence
+Real cameras, real devices, real events, real incidents and explainable policies.
+
+### Engineering excellence
+Secure architecture, maintainable code, automated testing, documentation and verified deployment.
+
+No feature should be considered complete just because its screen exists.
+
+---
+
+# 24. FIRST EXECUTION COMMAND
+
+START WITH PHASE 0 ONLY.
+
+Do not immediately generate the complete application.
+
+First produce:
+
+1. Environment report.
+2. Product architecture.
+3. Detailed frontend screen map.
+4. UI design system proposal.
+5. Frontend component architecture.
+6. Brain intelligence architecture.
+7. ALEANA voice architecture.
+8. Shared Brain-ALEANA context design.
+9. Backend and database architecture.
+10. Security architecture.
+11. API contract outline.
+12. Testing strategy.
+13. Phase-wise development plan.
+14. Resource and dependency analysis.
+15. Known risks and limitations.
+
+Then WAIT for explicit approval.
+
+After approval, begin Phase 1.
+
+---
+
+# FINAL DIRECTIVE
+
+Do not build a generic dashboard.
+
+Do not build a fake AI chatbot.
+
+Do not build a voice button that only changes its animation.
+
+Build a complete, coherent AI-first product.
+
+**The frontend must impress through design and usability.**
+
+**Vanta Brain must impress through genuine intelligence and evidence-grounded reasoning.**
+
+**ALEANA must impress through natural, responsive conversation and reliable interaction.**
+
+**The entire system must impress through real functionality, security and engineering quality.**
+
+PROJECT: VantaVisionAI  
+VERSION: V11.0  
+CODENAME: VANTA NEXUS  
+BUILD TYPE: GREENFIELD  
+PRODUCT TYPE: AI-FIRST SECURITY INTELLIGENCE OPERATING SYSTEM  
+PRIMARY FOCUS: FRONTEND × VANTA BRAIN × ALEANA  
+FIRST ACTION: PHASE 0 ONLY  
+EXECUTION RULE: VERIFY → BUILD → TEST → DOCUMENT → APPROVE

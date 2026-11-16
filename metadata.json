@@ -1,0 +1,6 @@
+{
+  "name": "VantaVisionAI — Vanta Nexus Command Center",
+  "description": "Enterprise AI-First Security & Infrastructure Intelligence Operating System featuring Vanta Brain 9-layer orchestration, ALEANA bilingual voice intelligence, real-time multi-device cloud synchronization, computer vision telemetry, Digital Twin, and SHA-256 cryptographic audit governance.",
+  "requestFramePermissions": ["camera", "microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
