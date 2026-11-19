@@ -434,7 +434,67 @@ export type ModelProviderStatus =
   | 'ERROR'
   | 'DISPOSED';
 
+export type CameraConnectionStatus =
+  | 'NOT CONNECTED'
+  | 'PERMISSION REQUIRED'
+  | 'CONNECTING'
+  | 'CONNECTED'
+  | 'ERROR';
+
+export type BrainSubsystemStatus =
+  | 'LOCAL PIPELINE READY'
+  | 'GEMINI CONNECTED'
+  | 'GEMINI UNAVAILABLE'
+  | 'AUTHENTICATION ERROR'
+  | 'MODEL ERROR'
+  | 'QUOTA EXCEEDED'
+  | 'REQUEST ERROR';
+
+export type AleanaSubsystemStatus =
+  | 'TEXT READY'
+  | 'SPEECH RECOGNITION AVAILABLE'
+  | 'SPEECH RECOGNITION UNSUPPORTED'
+  | 'MICROPHONE DENIED'
+  | 'SPEECH SYNTHESIS ERROR';
+
 export type PerformanceProfile = 'LOW_RESOURCE' | 'BALANCED' | 'HIGH_PERFORMANCE';
+
+export interface PipelineStageDiagnostics {
+  inferenceId: string;
+  timestampIso: string;
+  sourceType: 'LIVE_VIDEO' | 'TEST_FIXTURE';
+  sourceDimensions: { width: number; height: number };
+  rawPredictionsCount: number;
+  validPredictionsCount: number;
+  rejectedPredictionsCount: number;
+  rejectionReasons: string[];
+  confidenceFilteredCount: number;
+  classFilteredCount: number;
+  nmsSuppressedCount: number;
+  finalDisplayedCount: number;
+  rawClassesObserved: { className: string; score: number }[];
+}
+
+export interface BrainAiDiagnostics {
+  status: BrainSubsystemStatus;
+  geminiConfigured: boolean;
+  modelName: string;
+  fallbackModelName: string;
+  lastErrorCategory:
+    | 'NONE'
+    | 'API_KEY_MISSING'
+    | 'API_KEY_REJECTED'
+    | 'MODEL_UNAVAILABLE'
+    | 'QUOTA_EXCEEDED'
+    | 'NETWORK_FAILURE'
+    | 'REQUEST_TIMEOUT'
+    | 'INVALID_RESPONSE'
+    | null;
+  lastErrorMessage: string | null;
+  lastCheckedIso: string;
+  lastResponseLatencyMs: number | null;
+  usingFallback: boolean;
+}
 
 export interface NormalizedDetection {
   detectionId: string;
@@ -477,6 +537,7 @@ export interface MeasuredVisionTelemetry {
   modelStatus: ModelProviderStatus;
   modelId: string;
   modelVersion: string;
+  backend?: string;
   modelInitTimeMs: number | null;
   inferenceLatencyMs: number | null;
   processedFrames: number;
@@ -487,8 +548,10 @@ export interface MeasuredVisionTelemetry {
   activeDetectionsCount: number;
   errorCount: number;
   lastError: string | null;
+  lastErrorCategory?: string | null;
   performanceProfile: PerformanceProfile;
   provenanceMode: DetectionProvenance;
+  lastStageDiagnostics?: PipelineStageDiagnostics | null;
 }
 
 export interface DetectionEventRule {
@@ -531,10 +594,12 @@ export interface VantaSystemState {
   workflows?: AutonomousWorkflow[];
   memoryGovernance?: MemoryGovernanceState;
   observability?: SystemObservabilityMetrics;
-  // V15.0 Real-Time Vision Intelligence Extensions
+  // V15.0 / V16.0 Real-Time Vision & AI Reliability Extensions
   detectionFilterConfig?: DetectionFilterConfig;
   measuredVisionTelemetry?: MeasuredVisionTelemetry;
   detectionEventRules?: DetectionEventRule[];
   latestNormalizedDetections?: NormalizedDetection[];
+  brainAiDiagnostics?: BrainAiDiagnostics;
 }
+
 

@@ -5,7 +5,9 @@ import {
   appendAuditRecord,
   applyClassAwareNMS,
   buildCorrelationPipelineStages,
+  buildDefaultBrainAiDiagnostics,
   buildSceneIntelligenceSummary,
+  classifyGeminiError,
   computeIoU,
   createDevicePairingSession,
   createInitialVantaState,
@@ -18,21 +20,26 @@ import {
   sha256Hex,
   transitionIncidentState,
   updateObjectTracks,
+  validateAndHydrateSystemState,
   validateIncidentTransition,
   verifyAuditChain,
 } from './engine';
 import {
+  ALL_COCO_SSD_CLASSES,
   DEFAULT_DETECTION_FILTER_CONFIG,
   FrameInferenceScheduler,
   TfjsCocoSsdProvider,
   applyNormalizedClassAwareNMS,
   evaluateDetectionEventRules,
+  executeFullDetectionPipelinePass,
   filterPredictionsByConfig,
   mapBoxToCanvasCoordinates,
+  normalizedToBoundingBoxes,
   updateCameraObjectTracks,
   validateAndNormalizePredictions,
   validateVideoReadiness,
 } from './visionPipeline';
+import type { NormalizedDetection } from './types';
 
 test('SHA-256 hash chain verifies valid records and detects tampering', () => {
   const state = createInitialVantaState();
@@ -224,7 +231,7 @@ test('9-Stage Event Correlation Pipeline and Autonomous Workflow Human Approval 
   assert.ok(blocked.error?.includes('AUDITOR'));
 });
 
-test('Conversation Memory Governance resets conversation while preserving audit ledger', () => {
+test('Conversation Memory Governance resets conversation while preserving audit ledger and audits retention updates', () => {
   const state = createInitialVantaState();
   const resetState = manageConversationMemory(state, 'RESET_CONVERSATION');
   assert.equal(resetState.conversations.length, 1);
@@ -232,8 +239,11 @@ test('Conversation Memory Governance resets conversation while preserving audit 
   assert.ok(resetState.memoryGovernance?.lastPurgedIso);
   assert.equal(verifyAuditChain(resetState.auditTrail).valid, true);
 
+  const preRetentionAuditLen = resetState.auditTrail.length;
   const retentionUpdated = manageConversationMemory(resetState, 'UPDATE_RETENTION', 90);
   assert.equal(retentionUpdated.memoryGovernance?.retentionPeriodDays, 90);
+  assert.equal(retentionUpdated.auditTrail.length, preRetentionAuditLen + 1);
+  assert.equal(verifyAuditChain(retentionUpdated.auditTrail).valid, true);
 });
 
 /* ============================================================================
@@ -711,4 +721,285 @@ test('V15.1 Reliability: Concurrent model initialization shares single load, dis
   assert.ok(simEvents.length >= 1);
   assert.equal(simEvents[0].provenance, 'Simulated');
   assert.equal(simEvents[0].verified, false);
+});
+
+test('V16.0 Vision Pipeline: All 80 COCO-SSD classes enabled by default and executeFullDetectionPipelinePass returns stage-by-stage diagnostics', () => {
+  assert.ok(ALL_COCO_SSD_CLASSES.length >= 80);
+  assert.equal(DEFAULT_DETECTION_FILTER_CONFIG.enabledClasses.length, ALL_COCO_SSD_CLASSES.length);
+  assert.ok(DEFAULT_DETECTION_FILTER_CONFIG.enabledClasses.includes('bottle'));
+  assert.ok(DEFAULT_DETECTION_FILTER_CONFIG.enabledClasses.includes('keyboard'));
+  assert.ok(DEFAULT_DETECTION_FILTER_CONFIG.enabledClasses.includes('mouse'));
+  assert.ok(DEFAULT_DETECTION_FILTER_CONFIG.enabledClasses.includes('cup'));
+
+  const state = createInitialVantaState();
+  assert.equal(state.detectionFilterConfig?.enabledClasses.length, ALL_COCO_SSD_CLASSES.length);
+
+  const rawPredictions = [
+    { class: 'person', score: 0.92, bbox: [100, 100, 200, 400] as [number, number, number, number] },
+    { class: 'person', score: 0.87, bbox: [105, 102, 198, 396] as [number, number, number, number] }, // Overlapping -> suppressed by NMS
+    { class: 'bottle', score: 0.65, bbox: [420, 200, 45, 120] as [number, number, number, number] },
+    { class: 'cup', score: 0.22, bbox: [500, 220, 40, 50] as [number, number, number, number] }, // Filtered by displayMinConfidence (0.35)
+    { class: 'chair', score: 0.80, bbox: [10, 10, -20, 100] as [number, number, number, number] }, // Invalid negative width -> rejected
+  ];
+
+  const pass = executeFullDetectionPipelinePass(
+    rawPredictions,
+    {
+      cameraId: 'CAM-01',
+      sourceFrameWidth: 1280,
+      sourceFrameHeight: 720,
+      provenance: 'REAL_MODEL',
+      modelId: 'tfjs-coco-ssd',
+      modelVersion: '2.2.3',
+      inferenceId: 'INF-V16-01',
+      timestampIso: '2026-11-18T12:00:00.000Z',
+    },
+    DEFAULT_DETECTION_FILTER_CONFIG
+  );
+
+  assert.equal(pass.diagnostics.rawPredictionsCount, 5);
+  assert.equal(pass.diagnostics.validPredictionsCount, 4);
+  assert.equal(pass.diagnostics.rejectedPredictionsCount, 1);
+  assert.equal(pass.diagnostics.classFilteredCount, 0);
+  assert.equal(pass.diagnostics.confidenceFilteredCount, 1);
+  assert.equal(pass.diagnostics.nmsSuppressedCount, 1);
+  assert.equal(pass.diagnostics.finalDisplayedCount, 2);
+  assert.equal(pass.nmsDetections.length, 2);
+});
+
+test('V16.0 Model Provider: Bounded retry with exponential backoff prevents uncontrolled loops, manual retry resets backoff, and zero-dimension frames are rejected', async () => {
+  let attempts = 0;
+  const failingProvider = new TfjsCocoSsdProvider(async () => {
+    attempts += 1;
+    if (attempts <= 3) {
+      throw new Error(`Simulated model load failure #${attempts}`);
+    }
+    return {
+      detect: async () => [{ class: 'person', score: 0.94, bbox: [20, 30, 120, 240] }],
+      dispose: () => {},
+    };
+  });
+
+  // Attempt 1 fails -> sets backoff window
+  const r1 = await failingProvider.initialize();
+  assert.equal(r1.status, 'ERROR');
+  assert.equal(r1.errorCategory, 'MODEL_INIT_FAILED');
+  assert.equal(attempts, 1);
+
+  // Automatic retry during backoff window is blocked without invoking loader
+  const rBackoff = await failingProvider.initialize();
+  assert.equal(rBackoff.status, 'ERROR');
+  assert.equal(rBackoff.errorCategory, 'RETRY_BACKOFF_ACTIVE');
+  assert.equal(attempts, 1);
+
+  // Manual retry overrides backoff and runs attempt #2
+  const r2 = await failingProvider.retryInitialize();
+  assert.equal(r2.status, 'ERROR');
+  assert.equal(attempts, 2);
+
+  // Another manual retry runs attempt #3 (which fails) and then attempt #4 (which succeeds!)
+  const r3 = await failingProvider.retryInitialize();
+  assert.equal(r3.status, 'ERROR');
+  assert.equal(attempts, 3);
+
+  const r4 = await failingProvider.retryInitialize();
+  assert.equal(r4.status, 'READY');
+  assert.equal(attempts, 4);
+
+  // Zero-dimension frame must be rejected cleanly with INVALID_FRAME_DIMENSIONS
+  const badFrameRes = await failingProvider.detect({ width: 0, height: 0 } as any, 'CAM-01');
+  assert.equal(badFrameRes.rawPredictions.length, 0);
+  assert.equal(badFrameRes.errorCategory, 'INVALID_FRAME_DIMENSIONS');
+});
+
+test('V16.0 Brain & Provenance Governance: Gemini error classification, camera/detection query diagnostics, and seeded device/event integrity', () => {
+  const defaultMissingKey = buildDefaultBrainAiDiagnostics(false);
+  assert.equal(defaultMissingKey.status, 'GEMINI UNAVAILABLE');
+  assert.equal(defaultMissingKey.lastErrorCategory, 'API_KEY_MISSING');
+  assert.equal(defaultMissingKey.modelName, 'gemini-4-hydrogen');
+
+  const invalidKey = classifyGeminiError(new Error('401 API_KEY_INVALID unauthorized'));
+  assert.equal(invalidKey.status, 'AUTHENTICATION ERROR');
+  assert.equal(invalidKey.errorCategory, 'API_KEY_REJECTED');
+
+  const quotaErr = classifyGeminiError(new Error('429 RESOURCE_EXHAUSTED quota exceeded'));
+  assert.equal(quotaErr.status, 'QUOTA EXCEEDED');
+  assert.equal(quotaErr.errorCategory, 'QUOTA_EXCEEDED');
+
+  const modelErr = classifyGeminiError(new Error('404 model not found'));
+  assert.equal(modelErr.status, 'MODEL ERROR');
+  assert.equal(modelErr.errorCategory, 'MODEL_UNAVAILABLE');
+
+  // Seeded state integrity: demo devices must never claim 'Connected' without real pairing, and simulated events must have verified=false
+  const state = createInitialVantaState();
+  for (const dev of state.devices) {
+    assert.notEqual(dev.connectorState, 'Connected', `Seeded device ${dev.id} must not claim Connected`);
+  }
+  for (const evt of state.events) {
+    if (evt.provenance === 'Simulated') {
+      assert.equal(evt.verified, false, `Simulated event ${evt.id} must not be verified=true`);
+    }
+  }
+
+  // Hinglish diagnostic query about why camera detection is not working
+  const hinglishResp = runNineLayerBrainPipeline(
+    state,
+    'camera on karne pe kuch bhi detect nahi kar raha hai',
+    'TEXT'
+  );
+  assert.equal(hinglishResp.detectedLanguage, 'hinglish');
+  assert.ok(hinglishResp.directAnswer.includes('0 REAL_MODEL detections'));
+  assert.ok(hinglishResp.toolExecutions.some((t) => t.toolName === 'get_pipeline_diagnostics'));
+  assert.ok(hinglishResp.toolExecutions.some((t) => t.toolName === 'get_camera_inventory'));
+});
+
+test('V16.0 State Hydration & Corruption Recovery: validateAndHydrateSystemState recovers corrupted payloads, repairs tampered audit chains, and upgrades legacy class filters', () => {
+  // 1. Null or malformed payload falls back cleanly to initial state
+  const fallback = validateAndHydrateSystemState(null, { apiKeyConfigured: false });
+  assert.equal(fallback.recoveredFromCorruption, true);
+  assert.equal(verifyAuditChain(fallback.state.auditTrail).valid, true);
+
+  // 2. Tampered audit chain is detected on boot, recovered to valid genesis chain, and records STATE_AUDIT_RECOVERY_FROM_CORRUPTION
+  const baseState = createInitialVantaState();
+  const tamperedCandidate = {
+    ...baseState,
+    detectionFilterConfig: {
+      ...DEFAULT_DETECTION_FILTER_CONFIG,
+      enabledClasses: ['person', 'car'], // Legacy 2-class subset (< 80)
+    },
+    devices: baseState.devices.map((d) =>
+      d.id === 'DEV-AND-01' ? { ...d, connectorState: 'Connected' } : d
+    ),
+    auditTrail: baseState.auditTrail.map((r, idx) =>
+      idx === 1 ? { ...r, details: 'Corrupted on disk' } : r
+    ),
+  };
+
+  const hydrated = validateAndHydrateSystemState(tamperedCandidate, {
+    apiKeyConfigured: true,
+  });
+  assert.equal(hydrated.recoveredFromCorruption, true);
+  assert.equal(verifyAuditChain(hydrated.state.auditTrail).valid, true);
+  assert.ok(
+    hydrated.state.auditTrail.some(
+      (a) => a.action === 'STATE_AUDIT_RECOVERY_FROM_CORRUPTION'
+    )
+  );
+  // Legacy enabledClasses upgraded to full 80+ COCO-SSD classes
+  assert.equal(
+    hydrated.state.detectionFilterConfig?.enabledClasses.length,
+    ALL_COCO_SSD_CLASSES.length
+  );
+  // Seeded demo device normalized back to 'Simulated'
+  const devAnd01 = hydrated.state.devices.find((d) => d.id === 'DEV-AND-01');
+  assert.equal(devAnd01?.connectorState, 'Simulated');
+
+  // 3. Runtime mutations (upgradeLegacyClassFilter: false) preserve intentional custom class subsets and classified Gemini error diagnostics
+  const runtimeState = validateAndHydrateSystemState(
+    {
+      ...baseState,
+      detectionFilterConfig: {
+        ...DEFAULT_DETECTION_FILTER_CONFIG,
+        enabledClasses: ['person', 'car', 'laptop'],
+      },
+      brainAiDiagnostics: {
+        status: 'AUTHENTICATION ERROR',
+        geminiConfigured: true,
+        modelName: 'gemini-4-hydrogen',
+        fallbackModelName: 'vanta-brain-9layer-v16-fallback',
+        lastErrorCategory: 'API_KEY_REJECTED',
+        lastErrorMessage: 'API key rejected by upstream.',
+        lastCheckedIso: '2026-11-19T00:00:00.000Z',
+        lastResponseLatencyMs: 42,
+        usingFallback: true,
+      },
+    },
+    {
+      apiKeyConfigured: true,
+      upgradeLegacyClassFilter: false,
+    }
+  );
+  assert.deepEqual(runtimeState.state.detectionFilterConfig?.enabledClasses, [
+    'person',
+    'car',
+    'laptop',
+  ]);
+  assert.equal(
+    runtimeState.state.brainAiDiagnostics?.status,
+    'AUTHENTICATION ERROR'
+  );
+  assert.equal(
+    runtimeState.state.brainAiDiagnostics?.lastErrorCategory,
+    'API_KEY_REJECTED'
+  );
+});
+
+test('22. UPIE V3.0 Adversarial Validation: evaluateCompoundPolicyRule rejects NaN/non-finite inputs, executeBrainTool tolerates null args, and updateCameraObjectTracks ignores malformed detections without crashing', () => {
+  const state = createInitialVantaState();
+  const policy = state.policies[0];
+
+  // 1. NaN confidence or occupancy must never bypass policy thresholds
+  const nanConfEval = evaluateCompoundPolicyRule(policy, {
+    zoneId: policy.targetZoneId,
+    occupancy: 5,
+    maxDwellSeconds: 200,
+    confidence: Number.NaN,
+    isRestrictedHours: true,
+  });
+  assert.equal(nanConfEval.matched, false);
+  assert.ok(nanConfEval.reasons[0].includes('Invalid policy observation parameters'));
+
+  const negOccEval = evaluateCompoundPolicyRule(policy, {
+    zoneId: policy.targetZoneId,
+    occupancy: -1,
+    maxDwellSeconds: 200,
+    confidence: 0.95,
+    isRestrictedHours: true,
+  });
+  assert.equal(negOccEval.matched, false);
+
+  // 2. executeBrainTool safely handles null or array args without throwing TypeError
+  const nullArgsExec = executeBrainTool(
+    state,
+    'get_camera_inventory',
+    null as unknown as Record<string, unknown>
+  );
+  assert.equal(nullArgsExec.record.status, 'EXECUTED');
+  assert.ok(nullArgsExec.record.resultSummary.includes('Retrieved'));
+
+  // 3. updateCameraObjectTracks and normalizedToBoundingBoxes ignore malformed detection objects
+  const malformedDetections = [
+    null,
+    { bad: true },
+    { className: 'person', confidence: 0.9, boundingBox: { x: Number.NaN, y: 10, width: 20, height: 20 } },
+    { className: 'person', confidence: 0.9, boundingBox: { x: 10, y: 10, width: 0, height: 20 } },
+    {
+      detectionId: 'DET-VALID-1',
+      className: 'person',
+      category: 'PERSON' as const,
+      confidence: 0.91,
+      boundingBox: { x: 12, y: 15, width: 24, height: 48 },
+      frameTimestampIso: new Date().toISOString(),
+      cameraId: 'CAM-01',
+      modelName: 'COCO-SSD (lite_mobilenet_v2)',
+      backend: 'cpu',
+      isSimulated: false,
+    },
+  ] as unknown as NormalizedDetection[];
+
+  const tracks = updateCameraObjectTracks([], malformedDetections, 'CAM-01', 'ZONE-A');
+  assert.equal(tracks.length, 1);
+  assert.equal(tracks[0].label, 'person');
+
+  const boxes = normalizedToBoundingBoxes(malformedDetections, tracks, 'ZONE-A');
+  assert.equal(boxes.length, 1);
+  assert.equal(boxes[0].label, 'person');
+
+  // 4. executeAutonomousWorkflow blocks ANALYST from approving consequential workflows (WF-04)
+  const analystState = {
+    ...state,
+    tenant: { ...state.tenant, role: 'ANALYST' as const },
+  };
+  const analystApproveRes = executeAutonomousWorkflow(analystState, 'WF-04', true);
+  assert.ok(analystApproveRes.error?.includes('not authorized to approve consequential workflows'));
 });

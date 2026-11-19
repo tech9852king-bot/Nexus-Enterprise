@@ -55,6 +55,14 @@ export const OperationsAndPoliciesWorkspace: React.FC<
     'ALL' | SeverityLevel
   >('ALL');
 
+  const [policyFeedback, setPolicyFeedback] = useState<{
+    type: 'success' | 'error';
+    message: string;
+  } | null>(null);
+  const [isTransitioning, setIsTransitioning] = useState<boolean>(false);
+  const [togglingPolicyId, setTogglingPolicyId] = useState<string | null>(null);
+  const [isEvaluatingPolicy, setIsEvaluatingPolicy] = useState<boolean>(false);
+
   // Policy simulator state
   const [simPolicyId, setSimPolicyId] = useState<string>(
     state.policies[0]?.id || 'POL-01'
@@ -73,33 +81,68 @@ export const OperationsAndPoliciesWorkspace: React.FC<
     state.incidents.find((i) => i.id === selectedIncidentId) ||
     state.incidents[0];
 
+  const handleTogglePolicyClick = async (policyId: string) => {
+    if (togglingPolicyId) return;
+    setTogglingPolicyId(policyId);
+    setPolicyFeedback(null);
+    try {
+      const res = await onTogglePolicy(policyId);
+      if (res?.error) {
+        setPolicyFeedback({ type: 'error', message: res.error });
+      } else {
+        setPolicyFeedback({
+          type: 'success',
+          message: `Policy ${policyId} status updated and recorded in SHA-256 audit ledger.`,
+        });
+      }
+    } finally {
+      setTogglingPolicyId(null);
+    }
+  };
+
   const handleStateTransition = async (targetStatus: IncidentStatus) => {
-    if (!selectedIncident) return;
+    if (!selectedIncident || isTransitioning) return;
+    setIsTransitioning(true);
     setTransitionFeedback(null);
-    const res = await onTransitionIncident(
-      selectedIncident.id,
-      targetStatus,
-      evidenceNote
-    );
-    if (res.error) {
-      setTransitionFeedback({ type: 'error', message: res.error });
-    } else {
-      setTransitionFeedback({
-        type: 'success',
-        message: `Incident ${selectedIncident.id} transitioned to ${targetStatus} and recorded in SHA-256 audit ledger.`,
-      });
+    try {
+      const res = await onTransitionIncident(
+        selectedIncident.id,
+        targetStatus,
+        evidenceNote
+      );
+      if (res.error) {
+        setTransitionFeedback({ type: 'error', message: res.error });
+      } else {
+        setTransitionFeedback({
+          type: 'success',
+          message: `Incident ${selectedIncident.id} transitioned to ${targetStatus} and recorded in SHA-256 audit ledger.`,
+        });
+      }
+    } finally {
+      setIsTransitioning(false);
     }
   };
 
   const handleRunPolicyEval = async () => {
-    const res = await onEvaluatePolicy(simPolicyId, {
-      occupancy: simOccupancy,
-      maxDwellSeconds: simDwell,
-      confidence: simConfidence,
-      isRestrictedHours: simRestrictedHours,
-    });
-    if (res) {
-      setSimResult(res);
+    if (isEvaluatingPolicy) return;
+    setIsEvaluatingPolicy(true);
+    try {
+      const res = await onEvaluatePolicy(simPolicyId, {
+        occupancy: simOccupancy,
+        maxDwellSeconds: simDwell,
+        confidence: simConfidence,
+        isRestrictedHours: simRestrictedHours,
+      });
+      if (res) {
+        setSimResult(res);
+      } else {
+        setPolicyFeedback({
+          type: 'error',
+          message: 'Failed to evaluate policy rule. Check network connection.',
+        });
+      }
+    } finally {
+      setIsEvaluatingPolicy(false);
     }
   };
 
@@ -232,16 +275,20 @@ export const OperationsAndPoliciesWorkspace: React.FC<
                 <div className="flex flex-wrap items-center gap-2">
                   {(
                     ['INVESTIGATING', 'CONTAINED', 'RESOLVED'] as IncidentStatus[]
-                  ).map((target) => (
-                    <button
-                      key={target}
-                      type="button"
-                      onClick={() => handleStateTransition(target)}
-                      className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-900 text-white dark:bg-slate-800 dark:text-sky-300 hover:opacity-90 transition-opacity whitespace-nowrap shrink-0"
-                    >
-                      Transition → {target}
-                    </button>
-                  ))}
+                  ).map((target) => {
+                    const isCurrent = selectedIncident.status === target;
+                    return (
+                      <button
+                        key={target}
+                        type="button"
+                        disabled={isCurrent || isTransitioning}
+                        onClick={() => handleStateTransition(target)}
+                        className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-900 text-white dark:bg-slate-800 dark:text-sky-300 hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-opacity whitespace-nowrap shrink-0"
+                      >
+                        {isCurrent ? `Current: ${target}` : `Transition → ${target}`}
+                      </button>
+                    );
+                  })}
                 </div>
 
                 {transitionFeedback && (
@@ -299,6 +346,20 @@ export const OperationsAndPoliciesWorkspace: React.FC<
             </p>
           </div>
 
+          {policyFeedback && (
+            <div
+              role="status"
+              data-testid="policy-feedback-banner"
+              className={`text-xs font-medium p-2.5 rounded-lg border ${
+                policyFeedback.type === 'error'
+                  ? 'border-rose-500/40 bg-rose-500/10 text-rose-700 dark:text-rose-300'
+                  : 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+              }`}
+            >
+              {policyFeedback.message}
+            </div>
+          )}
+
           <div className="space-y-3">
             {state.policies.map((pol) => (
               <div
@@ -320,8 +381,9 @@ export const OperationsAndPoliciesWorkspace: React.FC<
 
                 <button
                   type="button"
-                  onClick={() => onTogglePolicy(pol.id)}
-                  className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors whitespace-nowrap shrink-0 ${
+                  disabled={togglingPolicyId === pol.id}
+                  onClick={() => void handleTogglePolicyClick(pol.id)}
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors whitespace-nowrap shrink-0 disabled:opacity-50 ${
                     pol.enabled
                       ? 'bg-emerald-600 text-white border-emerald-600'
                       : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-300 dark:border-slate-700'
@@ -402,12 +464,55 @@ export const OperationsAndPoliciesWorkspace: React.FC<
                 </div>
               </div>
 
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label
+                    htmlFor="sim-conf-input"
+                    className="block font-medium text-slate-700 dark:text-slate-300 mb-1"
+                  >
+                    Detection Confidence ({Math.round(simConfidence * 100)}%)
+                  </label>
+                  <input
+                    id="sim-conf-input"
+                    type="number"
+                    min={0.1}
+                    max={0.99}
+                    step={0.01}
+                    value={simConfidence}
+                    onChange={(e) =>
+                      setSimConfidence(
+                        Math.max(0.1, Math.min(0.99, Number(e.target.value) || 0.5))
+                      )
+                    }
+                    className="w-full px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 font-mono tabular-nums"
+                  />
+                </div>
+                <div className="flex flex-col justify-end">
+                  <label
+                    htmlFor="sim-restricted-toggle"
+                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 cursor-pointer select-none"
+                  >
+                    <input
+                      id="sim-restricted-toggle"
+                      type="checkbox"
+                      checked={simRestrictedHours}
+                      onChange={(e) => setSimRestrictedHours(e.target.checked)}
+                      className="accent-sky-500"
+                    />
+                    <span className="font-medium text-slate-700 dark:text-slate-300">
+                      After-Hours Window
+                    </span>
+                  </label>
+                </div>
+              </div>
+
               <button
                 type="button"
+                disabled={isEvaluatingPolicy}
                 onClick={handleRunPolicyEval}
-                className="w-full py-2 text-xs font-semibold rounded-lg bg-sky-600 hover:bg-sky-500 text-white transition-colors"
+                className="w-full py-2 text-xs font-semibold rounded-lg bg-sky-600 hover:bg-sky-500 disabled:opacity-50 text-white transition-colors"
               >
-                Evaluate Policy Rule
+                {isEvaluatingPolicy ? 'Evaluating...' : 'Evaluate Policy Rule'}
               </button>
             </div>
 

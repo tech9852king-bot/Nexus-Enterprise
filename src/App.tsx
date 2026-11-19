@@ -39,6 +39,7 @@ import { BrainAndAleanaWorkspace } from './components/BrainAndAleanaWorkspace';
 import { OperationsAndPoliciesWorkspace } from './components/OperationsAndPoliciesWorkspace';
 import { MultiDeviceAndTwinWorkspace } from './components/MultiDeviceAndTwinWorkspace';
 import { AuditAndBlueprintWorkspace } from './components/AuditAndBlueprintWorkspace';
+import { WorkspaceErrorBoundary } from './components/WorkspaceErrorBoundary';
 
 export type WorkspaceTab =
   | 'OVERVIEW'
@@ -133,7 +134,9 @@ export default function App() {
   const [chartWindow, setChartWindow] = useState<'1H' | '6H' | '24H'>('6H');
   const [quickBrainPrompt, setQuickBrainPrompt] = useState<string>('');
   const [quickBrainLoading, setQuickBrainLoading] = useState<boolean>(false);
+  const [quickBrainError, setQuickBrainError] = useState<string | null>(null);
   const [sseConnected, setSseConnected] = useState<boolean>(false);
+  const [syncErrorBanner, setSyncErrorBanner] = useState<string | null>(null);
 
   // Sync dark mode class on <html>
   useEffect(() => {
@@ -148,27 +151,35 @@ export default function App() {
   // Initial state fetch + Real-time Cloud Synchronization SSE Stream
   useEffect(() => {
     let isMounted = true;
+    const abortCtrl = new AbortController();
 
-    fetch('/api/state')
+    fetch('/api/state', { signal: abortCtrl.signal })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (isMounted && data?.state) {
           setState(data.state);
           setSseConnected(true);
+          setSyncErrorBanner(null);
           if (Array.isArray(data.toolsRegistry)) {
             setToolsRegistry(data.toolsRegistry);
           }
         }
       })
-      .catch(() => {
-        // Retain deterministic baseline state if offline
+      .catch((err) => {
+        if (err?.name === 'AbortError') return;
+        if (isMounted) {
+          setSseConnected(false);
+        }
       });
 
     let eventSource: EventSource | null = null;
     try {
       eventSource = new EventSource('/api/sync/stream');
       eventSource.onopen = () => {
-        if (isMounted) setSseConnected(true);
+        if (isMounted) {
+          setSseConnected(true);
+          setSyncErrorBanner(null);
+        }
       };
       eventSource.onmessage = (ev) => {
         try {
@@ -178,18 +189,19 @@ export default function App() {
             setSseConnected(true);
           }
         } catch {
-          // ignore malformed keepalive
+          // Ignore non-JSON SSE heartbeat frames
         }
       };
       eventSource.onerror = () => {
         if (isMounted) setSseConnected(false);
       };
     } catch {
-      // SSE optional fallback
+      if (isMounted) setSseConnected(false);
     }
 
     return () => {
       isMounted = false;
+      abortCtrl.abort();
       eventSource?.close();
     };
   }, []);
@@ -217,36 +229,57 @@ export default function App() {
     modality: 'TEXT' | 'VOICE_ALEANA',
     language?: 'en' | 'hi' | 'hinglish'
   ): Promise<ConversationMessage | null> => {
-    try {
-      const res = await fetch('/api/brain/query', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query, modality, language }),
-      });
-      const data = await res.json();
-      if (data?.state) {
-        setState(data.state);
-      }
-      return data?.message || null;
-    } catch {
-      return null;
+    const res = await fetch('/api/brain/query', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, modality, language }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (data?.state) {
+      setState(data.state);
+    }
+    if (!res.ok) {
+      throw new Error(data?.error || `Brain request failed with HTTP ${res.status}.`);
+    }
+    return data?.message || null;
+  };
+
+  const handleVerifyGeminiConnection = async (): Promise<void> => {
+    const res = await fetch('/api/brain/health?probe=true');
+    const data = await res.json().catch(() => ({}));
+    if (data?.diagnostics) {
+      setState((prev) => ({
+        ...prev,
+        brainAiDiagnostics: data.diagnostics,
+      }));
     }
   };
 
   const handleExecuteBrainTool = async (
     toolName: string,
     args: Record<string, unknown> = {}
-  ) => {
+  ): Promise<{ error?: string; message?: string }> => {
     try {
       const res = await fetch('/api/brain/execute-tool', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ toolName, args }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (data?.state) setState(data.state);
+      if (!res.ok) {
+        return { error: data?.error || `Tool execution failed (HTTP ${res.status}).` };
+      }
+      if (data?.record?.status === 'DENIED') {
+        return { error: data.record.resultSummary };
+      }
+      return {
+        message:
+          data?.record?.resultSummary ||
+          `Tool ${toolName} executed and recorded in SHA-256 ledger.`,
+      };
     } catch {
-      // ignore
+      return { error: 'Network error while executing Brain tool.' };
     }
   };
 
@@ -329,15 +362,21 @@ export default function App() {
     }
   };
 
-  const handleRevokeDevice = async (deviceId: string) => {
+  const handleRevokeDevice = async (
+    deviceId: string
+  ): Promise<{ error?: string }> => {
     try {
       const res = await fetch(`/api/devices/${deviceId}/revoke`, {
         method: 'POST',
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (data?.state) setState(data.state);
+      if (!res.ok) {
+        return { error: data?.error || 'Failed to update device authorization.' };
+      }
+      return {};
     } catch {
-      // ignore
+      return { error: 'Network error while updating device authorization.' };
     }
   };
 
@@ -358,10 +397,13 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (data?.state) setState(data.state);
+      if (!res.ok && data?.error) {
+        setSyncErrorBanner(data.error);
+      }
     } catch {
-      // ignore
+      setSyncErrorBanner('Telemetry sync temporarily offline · Local inference active.');
     }
   };
 
@@ -379,10 +421,13 @@ export default function App() {
           performanceProfile: telemetryPatch?.performanceProfile,
         }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (data?.state) setState(data.state);
+      if (!res.ok && data?.error) {
+        setSyncErrorBanner(data.error);
+      }
     } catch {
-      // ignore
+      setSyncErrorBanner('Failed to persist vision filter configuration to server.');
     }
   };
 
@@ -395,50 +440,77 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(prefs),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (data?.state) setState(data.state);
+      if (!res.ok && data?.error) {
+        setSyncErrorBanner(data.error);
+      }
     } catch {
-      // ignore
+      setState((prev) => ({
+        ...prev,
+        preferences: { ...prev.preferences, ...prefs },
+      }));
     }
   };
 
   const handleRefreshAudit = async () => {
-    const res = await fetch('/api/state');
-    const data = await res.json();
-    if (data?.state) setState(data.state);
+    try {
+      const [stateRes, verifyRes] = await Promise.all([
+        fetch('/api/state'),
+        fetch('/api/audit/verify'),
+      ]);
+      const stateData = await stateRes.json().catch(() => ({}));
+      const verifyData = await verifyRes.json().catch(() => ({}));
+      if (stateData?.state) setState(stateData.state);
+      return verifyData?.verification;
+    } catch {
+      return undefined;
+    }
   };
 
   const handleExecuteWorkflow = async (
     workflowId: string,
     approvedByHuman = false
-  ) => {
+  ): Promise<{ error?: string; message?: string }> => {
     try {
       const res = await fetch(`/api/workflows/${workflowId}/execute`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ approvedByHuman }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (data?.state) setState(data.state);
+      if (!res.ok) {
+        return { error: data?.error || 'Workflow execution rejected.' };
+      }
+      return {
+        message:
+          data?.workflow?.lastResultSummary ||
+          `Workflow ${workflowId} status: ${data?.workflow?.status || 'UPDATED'}.`,
+      };
     } catch {
-      // ignore
+      return { error: 'Network error while executing workflow.' };
     }
   };
 
   const handleManageMemory = async (
     action: 'RESET_CONVERSATION' | 'UPDATE_RETENTION',
     retentionDays?: number
-  ) => {
+  ): Promise<{ error?: string; message?: string }> => {
     try {
       const res = await fetch('/api/memory/manage', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action, retentionDays }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (data?.state) setState(data.state);
+      if (!res.ok) {
+        return { error: data?.error || 'Memory governance action rejected.' };
+      }
+      return {};
     } catch {
-      // ignore
+      return { error: 'Network error during memory governance update.' };
     }
   };
 
@@ -753,7 +825,7 @@ export default function App() {
               {(!sidebarCollapsed || mobileDrawerOpen) && (
                 <div>
                   <div className="text-xs font-mono font-semibold text-sky-600 dark:text-sky-400 tabular-nums">
-                    VANTA NEXUS V15.0
+                    VANTA NEXUS V16.0
                   </div>
                   <div className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
                     COMMAND CENTER
@@ -937,7 +1009,27 @@ export default function App() {
               </div>
             </div>
 
-            {/* WORKSPACE ROUTING */}
+            {syncErrorBanner && (
+              <div
+                role="status"
+                className="p-3 rounded-xl border border-amber-500/40 bg-amber-500/10 text-xs font-mono text-amber-700 dark:text-amber-300 flex items-center justify-between gap-3"
+              >
+                <span>{syncErrorBanner}</span>
+                <button
+                  type="button"
+                  onClick={() => setSyncErrorBanner(null)}
+                  className="underline font-semibold"
+                >
+                  Dismiss
+                </button>
+              </div>
+            )}
+
+            {/* WORKSPACE ROUTING WRAPPED IN FAULT-ISOLATION ERROR BOUNDARY */}
+            <WorkspaceErrorBoundary
+              workspaceName={activeNavMeta.label}
+              onResetWorkspace={() => setActiveTab('OVERVIEW')}
+            >
             {activeTab === 'OVERVIEW' && (
               <div className="space-y-6">
                 {/* Hero / Command Overview Header + Direct Brain Command Bar */}
@@ -945,7 +1037,7 @@ export default function App() {
                   <div className="lg:col-span-7 border border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-900 p-5 lg:p-6 flex flex-col justify-between space-y-4">
                     <div className="space-y-2">
                       <div className="text-xs font-mono text-sky-600 dark:text-sky-400">
-                        VANTA NEXUS V15.0 · COMMAND CENTER & REAL-TIME VISION INTELLIGENCE
+                        VANTA NEXUS V16.0 · COMMAND CENTER & REAL-TIME VISION INTELLIGENCE
                       </div>
                       <h1
                         className="text-xl lg:text-2xl font-bold tracking-tight text-slate-900 dark:text-white"
@@ -962,12 +1054,22 @@ export default function App() {
                     <form
                       onSubmit={async (e) => {
                         e.preventDefault();
-                        if (!quickBrainPrompt.trim()) return;
+                        if (!quickBrainPrompt.trim() || quickBrainLoading) return;
                         setQuickBrainLoading(true);
-                        await handleSendBrainQuery(quickBrainPrompt, 'TEXT');
-                        setQuickBrainLoading(false);
-                        setQuickBrainPrompt('');
-                        handleSelectNavTab('BRAIN_ALEANA');
+                        setQuickBrainError(null);
+                        try {
+                          await handleSendBrainQuery(quickBrainPrompt, 'TEXT');
+                          setQuickBrainPrompt('');
+                          handleSelectNavTab('BRAIN_ALEANA');
+                        } catch (err) {
+                          setQuickBrainError(
+                            err instanceof Error
+                              ? err.message
+                              : 'Failed to execute quick Vanta Brain query.'
+                          );
+                        } finally {
+                          setQuickBrainLoading(false);
+                        }
                       }}
                       className="flex flex-wrap items-center gap-2 pt-1"
                     >
@@ -990,6 +1092,14 @@ export default function App() {
                         {quickBrainLoading ? 'Executing...' : 'Ask Vanta Brain'}
                       </button>
                     </form>
+                    {quickBrainError && (
+                      <div
+                        role="alert"
+                        className="text-xs text-rose-600 dark:text-rose-400 font-mono"
+                      >
+                        {quickBrainError}
+                      </div>
+                    )}
                   </div>
 
                   {/* Right: Latest Vanta Brain × ALEANA Executive Synthesis */}
@@ -1342,6 +1452,7 @@ export default function App() {
                 state={state}
                 toolsRegistry={toolsRegistry}
                 onSendQuery={handleSendBrainQuery}
+                onVerifyGemini={handleVerifyGeminiConnection}
                 onExecuteTool={handleExecuteBrainTool}
                 onUpdatePreferences={handleUpdatePreferences}
                 onExecuteWorkflow={handleExecuteWorkflow}
@@ -1382,6 +1493,7 @@ export default function App() {
                 onRefreshAudit={handleRefreshAudit}
               />
             )}
+            </WorkspaceErrorBoundary>
           </div>
         </main>
       </div>

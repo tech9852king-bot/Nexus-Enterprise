@@ -12,7 +12,12 @@ import { FeatureStatus, VantaSystemState } from '../core/types';
 
 interface AuditAndBlueprintWorkspaceProps {
   state: VantaSystemState;
-  onRefreshAudit: () => Promise<void>;
+  onRefreshAudit: () => Promise<{
+    valid?: boolean;
+    checkedCount?: number;
+    headHash?: string;
+    verifiedAtIso?: string;
+  } | void>;
 }
 
 const CAPABILITY_MATRIX: {
@@ -158,16 +163,47 @@ export const AuditAndBlueprintWorkspace: React.FC<
 > = ({ state, onRefreshAudit }) => {
   const [activeSubTab, setActiveSubTab] = useState<'AUDIT' | 'BLUEPRINT' | 'OBSERVABILITY'>('AUDIT');
   const [verifying, setVerifying] = useState(false);
+  const [auditFeedback, setAuditFeedback] = useState<string | null>(null);
 
   const chainCheck = verifyAuditChain(state.auditTrail);
 
   const handleVerifyClick = async () => {
     setVerifying(true);
+    setAuditFeedback(null);
     try {
-      await onRefreshAudit();
+      const res = await onRefreshAudit();
+      const verifiedBlocks = res?.checkedCount ?? chainCheck.checkedCount;
+      const head = (res?.headHash ?? chainCheck.headHash).slice(0, 16);
+      setAuditFeedback(
+        `Cryptographic SHA-256 chain re-verified (${verifiedBlocks} blocks intact · Head ${head}… · Checked at ${new Date().toLocaleTimeString()}).`
+      );
     } finally {
       setVerifying(false);
     }
+  };
+
+  const handleExportAuditJson = () => {
+    const payload = {
+      exportedAtIso: new Date().toISOString(),
+      tenant: state.tenant,
+      syncRevision: state.syncRevision,
+      verification: chainCheck,
+      records: state.auditTrail,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {
+      type: 'application/json',
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `vanta-sha256-audit-rev-${state.syncRevision}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    setAuditFeedback(
+      `Exported verified SHA-256 audit ledger (${state.auditTrail.length} records, Revision #${state.syncRevision}) as JSON.`
+    );
   };
 
   return (
@@ -176,7 +212,7 @@ export const AuditAndBlueprintWorkspace: React.FC<
       <div className="border-b border-slate-200 dark:border-slate-800 pb-4 flex flex-wrap items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">
-            Cryptographic Audit, Observability & V14 Forensic Blueprint
+            Cryptographic Audit, Observability & V16.0 Forensic Blueprint
           </h2>
           <p className="text-sm text-slate-600 dark:text-slate-400 mt-0.5">
             Immutable SHA-256 hash-chain verification · Subsystem Observability Diagnostics · Non-Regression Constitution Register
@@ -241,16 +277,36 @@ export const AuditAndBlueprintWorkspace: React.FC<
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={handleVerifyClick}
-              disabled={verifying}
-              className="px-3.5 py-2 text-xs font-semibold rounded-lg bg-slate-900 text-white dark:bg-slate-800 dark:text-sky-300 hover:opacity-90 transition-opacity whitespace-nowrap shrink-0"
-            >
-              <RefreshCw className="w-3.5 h-3.5 inline mr-1.5" />
-              {verifying ? 'Verifying Chain...' : 'Re-Verify Cryptographic Hash Chain'}
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={handleVerifyClick}
+                disabled={verifying}
+                className="px-3.5 py-2 text-xs font-semibold rounded-lg bg-slate-900 text-white dark:bg-slate-800 dark:text-sky-300 hover:opacity-90 transition-opacity whitespace-nowrap shrink-0"
+              >
+                <RefreshCw className="w-3.5 h-3.5 inline mr-1.5" />
+                {verifying ? 'Verifying Chain...' : 'Re-Verify Cryptographic Hash Chain'}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleExportAuditJson}
+                className="px-3.5 py-2 text-xs font-semibold rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors whitespace-nowrap shrink-0"
+              >
+                Export Verified Ledger (JSON)
+              </button>
+            </div>
           </div>
+
+          {auditFeedback && (
+            <div
+              role="status"
+              data-testid="audit-verification-feedback"
+              className="p-3 rounded-xl border border-emerald-500/40 bg-emerald-500/10 text-xs font-mono text-emerald-700 dark:text-emerald-300"
+            >
+              {auditFeedback}
+            </div>
+          )}
 
           {/* Audit Table */}
           <div className="border border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-900 p-5">

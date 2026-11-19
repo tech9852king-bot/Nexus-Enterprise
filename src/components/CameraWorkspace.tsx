@@ -15,6 +15,7 @@ import {
   Video,
 } from 'lucide-react';
 import {
+  CameraConnectionStatus,
   CameraEntity,
   DetectionFilterConfig,
   DetectionProvenance,
@@ -23,17 +24,16 @@ import {
   NormalizedDetection,
   ObjectTrack,
   PerformanceProfile,
+  PipelineStageDiagnostics,
   VantaSystemState,
 } from '../core/types';
 import {
   DEFAULT_DETECTION_FILTER_CONFIG,
   FrameInferenceScheduler,
   TfjsCocoSsdProvider,
-  applyNormalizedClassAwareNMS,
-  filterPredictionsByConfig,
+  executeFullDetectionPipelinePass,
   mapBoxToCanvasCoordinates,
   updateCameraObjectTracks,
-  validateAndNormalizePredictions,
   validateVideoReadiness,
 } from '../core/visionPipeline';
 
@@ -70,8 +70,10 @@ export const CameraWorkspace: React.FC<CameraWorkspaceProps> = ({
   const [focusMode, setFocusMode] = useState<boolean>(false);
   const [fullscreenCamId, setFullscreenCamId] = useState<string | null>(null);
 
-  // Strict Preservation of Camera Refs & State (Part D2)
+  // Strict Preservation of Camera Refs & State + Section 3.1/7 Explicit Camera Status
   const [liveWebcamActive, setLiveWebcamActive] = useState<boolean>(false);
+  const [cameraConnectionStatus, setCameraConnectionStatus] =
+    useState<CameraConnectionStatus>('NOT CONNECTED');
   const [webcamError, setWebcamError] = useState<string | null>(null);
   const [cameraFps, setCameraFps] = useState<number | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -88,6 +90,9 @@ export const CameraWorkspace: React.FC<CameraWorkspaceProps> = ({
 
   const [modelStatus, setModelStatus] = useState<ModelProviderStatus>(
     state.measuredVisionTelemetry?.modelStatus || 'UNINITIALIZED'
+  );
+  const [modelBackend, setModelBackend] = useState<string>(
+    state.measuredVisionTelemetry?.backend || 'uninitialized'
   );
   const [modelInitTimeMs, setModelInitTimeMs] = useState<number | null>(
     state.measuredVisionTelemetry?.modelInitTimeMs ?? null
@@ -110,6 +115,15 @@ export const CameraWorkspace: React.FC<CameraWorkspaceProps> = ({
   const [lastModelError, setLastModelError] = useState<string | null>(
     state.measuredVisionTelemetry?.lastError ?? null
   );
+  const [lastErrorCategory, setLastErrorCategory] = useState<string | null>(
+    state.measuredVisionTelemetry?.lastErrorCategory ?? null
+  );
+  const [stageDiagnostics, setStageDiagnostics] =
+    useState<PipelineStageDiagnostics | null>(
+      state.measuredVisionTelemetry?.lastStageDiagnostics ?? null
+    );
+  const [selfTestFeedback, setSelfTestFeedback] = useState<string | null>(null);
+  const [isSelfTesting, setIsSelfTesting] = useState<boolean>(false);
   const [performanceProfile, setPerformanceProfile] = useState<PerformanceProfile>(
     state.measuredVisionTelemetry?.performanceProfile || 'BALANCED'
   );
@@ -117,7 +131,11 @@ export const CameraWorkspace: React.FC<CameraWorkspaceProps> = ({
     state.measuredVisionTelemetry?.provenanceMode || 'REAL_MODEL'
   );
   const [schedulerPaused, setSchedulerPaused] = useState<boolean>(false);
-  const [realDetections, setRealDetections] = useState<NormalizedDetection[]>([]);
+  const [realDetections, setRealDetections] = useState<NormalizedDetection[]>(() =>
+    (state.latestNormalizedDetections || []).filter(
+      (d) => d.provenance === 'REAL_MODEL'
+    )
+  );
   const [localTracks, setLocalTracks] = useState<ObjectTrack[]>(
     state.activeTracks || []
   );
@@ -148,6 +166,22 @@ export const CameraWorkspace: React.FC<CameraWorkspaceProps> = ({
     tracksRef.current = localTracks;
   }, [localTracks]);
 
+  // Keep stageDiagnostics & realDetections synchronized when canonical state updates via SSE or remount
+  useEffect(() => {
+    if (state.measuredVisionTelemetry?.lastStageDiagnostics && !stageDiagnostics) {
+      setStageDiagnostics(state.measuredVisionTelemetry.lastStageDiagnostics);
+    }
+    if (!liveWebcamActiveRef.current && Array.isArray(state.latestNormalizedDetections)) {
+      setRealDetections(
+        state.latestNormalizedDetections.filter((d) => d.provenance === 'REAL_MODEL')
+      );
+    }
+  }, [
+    state.measuredVisionTelemetry?.lastStageDiagnostics,
+    state.latestNormalizedDetections,
+    stageDiagnostics,
+  ]);
+
   // Filter Configuration (Part D7)
   const filterConfig: DetectionFilterConfig =
     state.detectionFilterConfig || DEFAULT_DETECTION_FILTER_CONFIG;
@@ -170,6 +204,7 @@ export const CameraWorkspace: React.FC<CameraWorkspaceProps> = ({
     liveWebcamActiveRef.current = false;
     cameraFpsRef.current = null;
     setLiveWebcamActive(false);
+    setCameraConnectionStatus('NOT CONNECTED');
     setCameraFps(null);
     setInferenceFps(null);
     setRealDetections([]);
@@ -183,41 +218,66 @@ export const CameraWorkspace: React.FC<CameraWorkspaceProps> = ({
         measuredVisionTelemetry: {
           cameraFps: null,
           inferenceFps: null,
+          provenanceMode: 'SIMULATED_DEMO',
         },
       });
     }
   }, [onReportTelemetry, selectedCamera]);
 
-  const initializeVisionModel = useCallback(async () => {
-    if (
-      !providerRef.current ||
-      providerRef.current.getStatus() === 'DISPOSED'
-    ) {
-      providerRef.current = new TfjsCocoSsdProvider();
-    }
-    setModelStatus(providerRef.current.getStatus() === 'READY' ? 'READY' : 'LOADING');
-    setLastModelError(null);
-    const res = await providerRef.current.initialize();
-    setModelStatus(res.status);
-    if (res.initTimeMs !== null) {
-      modelInitTimeMsRef.current = res.initTimeMs;
-      setModelInitTimeMs(res.initTimeMs);
-    }
-    if (res.error) {
-      errorCountRef.current += 1;
-      setErrorCount(errorCountRef.current);
-      setLastModelError(res.error);
-    }
-    await onUpdateVisionConfig?.(
-      {},
-      {
-        modelStatus: res.status,
-        modelInitTimeMs: res.initTimeMs,
-        lastError: res.error || null,
+  const initializeVisionModel = useCallback(
+    async (options?: { forceManualRetry?: boolean }) => {
+      if (
+        !providerRef.current ||
+        providerRef.current.getStatus() === 'DISPOSED'
+      ) {
+        providerRef.current = new TfjsCocoSsdProvider();
       }
-    );
-    return res.status === 'READY';
-  }, [onUpdateVisionConfig]);
+      const currentStatus = providerRef.current.getStatus();
+      if (currentStatus === 'READY') {
+        setModelStatus('READY');
+        setModelBackend(providerRef.current.getModelMetadata().backend);
+        return true;
+      }
+
+      if (options?.forceManualRetry) {
+        setLastModelError(null);
+        setLastErrorCategory(null);
+      }
+
+      const res = await providerRef.current.initialize(options);
+      const meta = providerRef.current.getModelMetadata();
+      setModelStatus(res.status);
+      setModelBackend(res.backend || meta.backend);
+
+      if (res.initTimeMs !== null) {
+        modelInitTimeMsRef.current = res.initTimeMs;
+        setModelInitTimeMs(res.initTimeMs);
+      }
+      if (res.error) {
+        if (res.errorCategory !== 'RETRY_BACKOFF_ACTIVE') {
+          errorCountRef.current += 1;
+          setErrorCount(errorCountRef.current);
+        }
+        setLastModelError(res.error);
+        setLastErrorCategory(res.errorCategory || 'MODEL_INIT_FAILED');
+      } else {
+        setLastModelError(null);
+        setLastErrorCategory(null);
+      }
+      await onUpdateVisionConfig?.(
+        {},
+        {
+          modelStatus: res.status,
+          backend: res.backend || meta.backend,
+          modelInitTimeMs: res.initTimeMs,
+          lastError: res.error || null,
+          lastErrorCategory: res.errorCategory || null,
+        }
+      );
+      return res.status === 'READY';
+    },
+    [onUpdateVisionConfig]
+  );
 
   const startAuthorizedWebcam = async () => {
     if (webcamStartingRef.current || liveWebcamActiveRef.current) {
@@ -226,10 +286,12 @@ export const CameraWorkspace: React.FC<CameraWorkspaceProps> = ({
     webcamStartingRef.current = true;
     const startGeneration = ++sessionGenerationRef.current;
     setWebcamError(null);
+    setCameraConnectionStatus('PERMISSION REQUIRED');
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         throw new Error('Browser mediaDevices.getUserMedia API unavailable.');
       }
+      setCameraConnectionStatus('CONNECTING');
       // Strictly reuse existing stream if already active to prevent duplicate camera streams
       if (!streamRef.current) {
         const mediaStream = await navigator.mediaDevices.getUserMedia({
@@ -243,13 +305,36 @@ export const CameraWorkspace: React.FC<CameraWorkspaceProps> = ({
         }
         streamRef.current = mediaStream;
       }
+
+      const videoEl = videoRef.current;
+      if (videoEl) {
+        videoEl.srcObject = streamRef.current;
+        // Wait for video metadata & dimensions before starting detection loop (Section 3.2)
+        if (videoEl.readyState < 2 || videoEl.videoWidth === 0) {
+          await new Promise<void>((resolve) => {
+            let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
+            const onReady = () => {
+              if (fallbackTimer) clearTimeout(fallbackTimer);
+              videoEl.removeEventListener('loadedmetadata', onReady);
+              videoEl.removeEventListener('loadeddata', onReady);
+              resolve();
+            };
+            videoEl.addEventListener('loadedmetadata', onReady);
+            videoEl.addEventListener('loadeddata', onReady);
+            fallbackTimer = setTimeout(onReady, 1500);
+          });
+        }
+        await videoEl.play();
+      }
+
+      if (sessionGenerationRef.current !== startGeneration) {
+        return;
+      }
+
       liveWebcamActiveRef.current = true;
       setLiveWebcamActive(true);
+      setCameraConnectionStatus('CONNECTED');
       setProvenanceMode('REAL_MODEL');
-      if (videoRef.current) {
-        videoRef.current.srcObject = streamRef.current;
-        await videoRef.current.play();
-      }
       schedulerRef.current.start();
       if (schedulerPaused) {
         schedulerRef.current.pause();
@@ -265,8 +350,17 @@ export const CameraWorkspace: React.FC<CameraWorkspaceProps> = ({
         err instanceof Error
           ? err.message
           : 'Camera permission denied or hardware unavailable.';
+      const isPermissionDenied =
+        msg.toLowerCase().includes('permission') ||
+        msg.toLowerCase().includes('notallowed') ||
+        msg.toLowerCase().includes('denied');
+      setCameraConnectionStatus(
+        isPermissionDenied ? 'PERMISSION REQUIRED' : 'ERROR'
+      );
       setWebcamError(
-        `Live hardware stream unavailable (${msg}). Camera state is NOT CONNECTED.`
+        `Live hardware stream unavailable (${msg}). Camera state is ${
+          isPermissionDenied ? 'PERMISSION REQUIRED' : 'ERROR'
+        }.`
       );
       liveWebcamActiveRef.current = false;
       cameraFpsRef.current = null;
@@ -290,19 +384,28 @@ export const CameraWorkspace: React.FC<CameraWorkspaceProps> = ({
     };
   }, []);
 
-  // Execute a single genuine inference pass through the full Part D4 pipeline
+  // Execute a single genuine inference pass through the full Section 3.4 - 3.10 pipeline
   const executePipelinePass = useCallback(
     async (
       sourceElement: HTMLVideoElement | HTMLCanvasElement,
-      options: { isManualPass?: boolean } = {}
+      options: {
+        isManualPass?: boolean;
+        sourceType?: 'LIVE_VIDEO' | 'TEST_FIXTURE';
+        provenanceOverride?: DetectionProvenance;
+      } = {}
     ) => {
       if (!selectedCamera) return;
       const passGeneration = sessionGenerationRef.current;
       const targetCameraId = selectedCamera.id;
       const targetZoneId = selectedCamera.zoneId;
+      const effectiveSourceType = options.sourceType || 'LIVE_VIDEO';
+      const effectiveProvenance: DetectionProvenance =
+        options.provenanceOverride || 'REAL_MODEL';
 
       if (!providerRef.current || providerRef.current.getStatus() !== 'READY') {
-        const ok = await initializeVisionModel();
+        const ok = await initializeVisionModel({
+          forceManualRetry: Boolean(options.isManualPass),
+        });
         if (!ok || !providerRef.current) return;
       }
       if (
@@ -315,6 +418,7 @@ export const CameraWorkspace: React.FC<CameraWorkspaceProps> = ({
       const provider = providerRef.current;
       const meta = provider.getModelMetadata();
       setModelStatus('RUNNING');
+      setModelBackend(meta.backend);
 
       const detectionOutcome = await provider.detect(
         sourceElement,
@@ -331,11 +435,15 @@ export const CameraWorkspace: React.FC<CameraWorkspaceProps> = ({
       }
 
       setModelStatus(provider.getStatus());
+      setModelBackend(provider.getModelMetadata().backend);
 
       if (detectionOutcome.error) {
         errorCountRef.current += 1;
         setErrorCount(errorCountRef.current);
         setLastModelError(detectionOutcome.error);
+        setLastErrorCategory(
+          detectionOutcome.errorCategory || 'INFERENCE_EXECUTION_FAILED'
+        );
         return;
       }
 
@@ -343,7 +451,7 @@ export const CameraWorkspace: React.FC<CameraWorkspaceProps> = ({
 
       // Measure actual completed inference FPS over a rolling 1-second window when live stream is active
       let measuredInfFps: number | null = null;
-      if (liveWebcamActiveRef.current) {
+      if (liveWebcamActiveRef.current && effectiveSourceType === 'LIVE_VIDEO') {
         const nowPerf = performance.now();
         const recent = inferenceTimestampsRef.current.filter(
           (ts) => nowPerf - ts <= 1000
@@ -354,8 +462,8 @@ export const CameraWorkspace: React.FC<CameraWorkspaceProps> = ({
       }
       setInferenceFps(measuredInfFps);
 
-      // Stage D6: Prediction Validation & Normalization
-      const { validDetections } = validateAndNormalizePredictions(
+      // Full stage-by-stage detection pipeline with complete diagnostic counts (Section 3.4 - 3.7)
+      const passResult = executeFullDetectionPipelinePass(
         detectionOutcome.rawPredictions,
         {
           sourceFrameWidth: detectionOutcome.frameWidth,
@@ -364,35 +472,35 @@ export const CameraWorkspace: React.FC<CameraWorkspaceProps> = ({
           modelId: meta.modelId,
           modelVersion: meta.modelVersion,
           inferenceId: detectionOutcome.inferenceId,
-          provenance: 'REAL_MODEL',
-        }
-      );
-
-      // Stage D7: Confidence & Class Filtering
-      const { displayDetections } = filterPredictionsByConfig(
-        validDetections,
+          provenance: effectiveProvenance,
+          sourceType: effectiveSourceType,
+        },
         filterConfig
       );
 
-      // Stage D8: Class-Aware Non-Maximum Suppression
-      const nmsDetections = applyNormalizedClassAwareNMS(
-        displayDetections,
-        filterConfig.nmsIouThreshold
-      );
+      const { nmsDetections, diagnostics } = passResult;
+      setStageDiagnostics(diagnostics);
 
-      // Stage D9: Camera-Scoped Object Tracking
-      const nextTracks = updateCameraObjectTracks(
-        tracksRef.current,
-        nmsDetections,
-        targetCameraId,
-        targetZoneId
-      );
+      if (effectiveSourceType === 'TEST_FIXTURE') {
+        setSelfTestFeedback(
+          `Model Self-Test Verified (${diagnostics.inferenceId}): TensorFlow.js COCO-SSD (${provider.getModelMetadata().backend}) executed in ${detectionOutcome.latencyMs}ms on ${diagnostics.sourceDimensions.width}x${diagnostics.sourceDimensions.height} fixture (Raw=${diagnostics.rawPredictionsCount}, Valid=${diagnostics.validPredictionsCount}, Final=${diagnostics.finalDisplayedCount}, Provenance=IMPORTED_SAMPLE).`
+        );
+      }
 
-      tracksRef.current = nextTracks;
-      setRealDetections(nmsDetections);
-      setLocalTracks(nextTracks);
+      // Only mutate live camera tracks and realDetections if this was a LIVE_VIDEO pass
+      let nextTracks = tracksRef.current;
+      if (effectiveSourceType === 'LIVE_VIDEO') {
+        nextTracks = updateCameraObjectTracks(
+          tracksRef.current,
+          nmsDetections,
+          targetCameraId,
+          targetZoneId
+        );
+        tracksRef.current = nextTracks;
+        setRealDetections(nmsDetections);
+        setLocalTracks(nextTracks);
+      }
 
-      // Compute actual measured centroid displacement across matched camera tracks (no count * 8 fabrication)
       const activeCamTracks = nextTracks.filter(
         (t) => t.cameraId === targetCameraId && t.occludedFrames === 0
       );
@@ -420,11 +528,13 @@ export const CameraWorkspace: React.FC<CameraWorkspaceProps> = ({
         fps: currentCamFps,
         inferenceLatencyMs: detectionOutcome.latencyMs,
         motionScore: liveWebcamActiveRef.current ? measuredDisplacement : null,
-        normalizedDetections: nmsDetections,
+        normalizedDetections:
+          effectiveSourceType === 'LIVE_VIDEO' ? nmsDetections : undefined,
         measuredVisionTelemetry: {
           modelStatus: provider.getStatus(),
           modelId: meta.modelId,
           modelVersion: meta.modelVersion,
+          backend: provider.getModelMetadata().backend,
           modelInitTimeMs: modelInitTimeMsRef.current,
           inferenceLatencyMs: detectionOutcome.latencyMs,
           processedFrames: stats.processedFrames,
@@ -433,8 +543,12 @@ export const CameraWorkspace: React.FC<CameraWorkspaceProps> = ({
           inferenceFps: measuredInfFps,
           errorCount: errorCountRef.current,
           lastError: null,
+          lastErrorCategory: null,
           performanceProfile,
-          provenanceMode: 'REAL_MODEL',
+          provenanceMode: liveWebcamActiveRef.current
+            ? 'REAL_MODEL'
+            : effectiveProvenance,
+          lastStageDiagnostics: diagnostics,
         },
       });
     },
@@ -447,7 +561,7 @@ export const CameraWorkspace: React.FC<CameraWorkspaceProps> = ({
     ]
   );
 
-  // Continuous bounded frame scheduler loop when live webcam is active (Part D4 & D5)
+  // Continuous bounded frame scheduler loop when live webcam is active (Section 3.3 & 3.4)
   useEffect(() => {
     if (!liveWebcamActive) return;
     let active = true;
@@ -462,9 +576,22 @@ export const CameraWorkspace: React.FC<CameraWorkspaceProps> = ({
       if (!active || !liveWebcamActiveRef.current) return;
       const videoEl = videoRef.current;
       const readiness = validateVideoReadiness(videoEl);
-      if (readiness.ready && videoEl && provenanceMode === 'REAL_MODEL') {
+      const currentProviderStatus =
+        providerRef.current?.getStatus() || 'UNINITIALIZED';
+
+      // Prevent uncontrolled retry loops: only run loop pass when provider is READY
+      if (
+        readiness.ready &&
+        videoEl &&
+        provenanceMode === 'REAL_MODEL' &&
+        currentProviderStatus === 'READY'
+      ) {
         await schedulerRef.current.tryScheduleFrame(performance.now(), async () => {
-          await executePipelinePass(videoEl, { isManualPass: false });
+          await executePipelinePass(videoEl, {
+            isManualPass: false,
+            sourceType: 'LIVE_VIDEO',
+            provenanceOverride: 'REAL_MODEL',
+          });
         });
         if (active) {
           const stats = schedulerRef.current.getStats();
@@ -484,7 +611,7 @@ export const CameraWorkspace: React.FC<CameraWorkspaceProps> = ({
     };
   }, [liveWebcamActive, provenanceMode, schedulerPaused, executePipelinePass]);
 
-  // Part D10: Accurate Overlay Rendering (Zero sinusoidal fake movement!)
+  // Part D10: Accurate Overlay Rendering (Zero sinusoidal fake movement & zero idle 60fps CPU burn when webcam is off)
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !selectedCamera) return;
@@ -495,17 +622,7 @@ export const CameraWorkspace: React.FC<CameraWorkspaceProps> = ({
     let animId = 0;
     let lastTime = performance.now();
 
-    const renderFrame = (now: number) => {
-      frameCount++;
-      const dt = now - lastTime;
-      if (dt >= 1000) {
-        if (liveWebcamActive) {
-          setCameraFps(Math.min(60, Math.round((frameCount * 1000) / dt)));
-        }
-        frameCount = 0;
-        lastTime = now;
-      }
-
+    const drawOverlay = () => {
       const w = canvas.width;
       const h = canvas.height;
       ctx.clearRect(0, 0, w, h);
@@ -556,38 +673,40 @@ export const CameraWorkspace: React.FC<CameraWorkspaceProps> = ({
           const sourceW = videoRef.current?.videoWidth || 640;
           const sourceH = videoRef.current?.videoHeight || 360;
 
-          realDetections.forEach((det) => {
-            const mapped = mapBoxToCanvasCoordinates(det.boundingBox, {
-              sourceWidth: sourceW,
-              sourceHeight: sourceH,
-              canvasWidth: w,
-              canvasHeight: h,
-              objectFit: 'cover',
+          realDetections
+            .filter((det) => det.cameraId === selectedCamera.id)
+            .forEach((det) => {
+              const mapped = mapBoxToCanvasCoordinates(det.boundingBox, {
+                sourceWidth: sourceW,
+                sourceHeight: sourceH,
+                canvasWidth: w,
+                canvasHeight: h,
+                objectFit: 'cover',
+              });
+
+              ctx.strokeStyle = '#10b981';
+              ctx.lineWidth = 2;
+              ctx.strokeRect(mapped.x, mapped.y, mapped.width, mapped.height);
+
+              ctx.fillStyle = 'rgba(16, 185, 129, 0.14)';
+              ctx.fillRect(mapped.x, mapped.y, mapped.width, mapped.height);
+
+              // Centroid marker
+              const cx = mapped.x + mapped.width / 2;
+              const cy = mapped.y + mapped.height / 2;
+              ctx.fillStyle = '#38bdf8';
+              ctx.beginPath();
+              ctx.arc(cx, cy, 3, 0, Math.PI * 2);
+              ctx.fill();
+
+              ctx.fillStyle = '#f8fafc';
+              ctx.font = '600 11px "JetBrains Mono", monospace';
+              ctx.fillText(
+                `[REAL_MODEL] ${det.className} ${(det.confidence * 100).toFixed(0)}% · ${det.detectionId.slice(-6)}`,
+                mapped.x + 4,
+                Math.max(14, mapped.y - 6)
+              );
             });
-
-            ctx.strokeStyle = '#10b981';
-            ctx.lineWidth = 2;
-            ctx.strokeRect(mapped.x, mapped.y, mapped.width, mapped.height);
-
-            ctx.fillStyle = 'rgba(16, 185, 129, 0.14)';
-            ctx.fillRect(mapped.x, mapped.y, mapped.width, mapped.height);
-
-            // Centroid marker
-            const cx = mapped.x + mapped.width / 2;
-            const cy = mapped.y + mapped.height / 2;
-            ctx.fillStyle = '#38bdf8';
-            ctx.beginPath();
-            ctx.arc(cx, cy, 3, 0, Math.PI * 2);
-            ctx.fill();
-
-            ctx.fillStyle = '#f8fafc';
-            ctx.font = '600 11px "JetBrains Mono", monospace';
-            ctx.fillText(
-              `[REAL_MODEL] ${det.className} ${(det.confidence * 100).toFixed(0)}% · ${det.detectionId.slice(-6)}`,
-              mapped.x + 4,
-              Math.max(14, mapped.y - 6)
-            );
-          });
         } else {
           // Explicit SIMULATED_DEMO mode — deterministic coordinates, ZERO fake sinusoidal movement
           selectedCamera.activeDetections.forEach((det) => {
@@ -623,30 +742,48 @@ export const CameraWorkspace: React.FC<CameraWorkspaceProps> = ({
       ctx.fillStyle = '#94a3b8';
       ctx.font = '400 11px "JetBrains Mono", monospace';
       ctx.fillText(
-        `PROVENANCE: ${provenanceMode} · MODEL: ${modelStatus} · STREAM: ${
-          liveWebcamActive ? 'LIVE WEBCAM (CONNECTED)' : 'HARDWARE CAMERA NOT CONNECTED'
-        }`,
+        `PROVENANCE: ${provenanceMode} · MODEL: ${modelStatus} (${modelBackend}) · CAMERA: ${cameraConnectionStatus}`,
         16,
         h - 14
       );
-
-      animId = requestAnimationFrame(renderFrame);
     };
 
-    animId = requestAnimationFrame(renderFrame);
+    if (!liveWebcamActive) {
+      drawOverlay();
+      return;
+    }
+
+    const renderLoop = (now: number) => {
+      frameCount++;
+      const dt = now - lastTime;
+      if (dt >= 1000) {
+        setCameraFps(Math.min(60, Math.round((frameCount * 1000) / dt)));
+        frameCount = 0;
+        lastTime = now;
+      }
+      drawOverlay();
+      animId = requestAnimationFrame(renderLoop);
+    };
+
+    animId = requestAnimationFrame(renderLoop);
     return () => cancelAnimationFrame(animId);
   }, [
     selectedCamera,
     showDetections,
     showZoneOverlay,
     liveWebcamActive,
+    cameraConnectionStatus,
     provenanceMode,
     realDetections,
     modelStatus,
+    modelBackend,
   ]);
 
   const displayedCameras = state.cameras.slice(0, gridLayout);
   const cameraTracks = localTracks.filter((t) => t.cameraId === selectedCamera?.id);
+  const selectedRealDetections = realDetections.filter(
+    (d) => d.cameraId === selectedCamera?.id
+  );
 
   return (
     <div className="space-y-5">
@@ -654,10 +791,10 @@ export const CameraWorkspace: React.FC<CameraWorkspaceProps> = ({
       <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-4">
         <div>
           <h2 className="text-lg font-semibold tracking-tight text-slate-100">
-            Camera Command & Real-Time Vision Intelligence (V15.0)
+            Camera Command & Real-Time Vision Intelligence (V16.0)
           </h2>
           <p className="text-xs text-slate-400 mt-0.5">
-            Genuine TensorFlow.js COCO-SSD Inference Pipeline · Bounded Frame Scheduler · Explicit Provenance Separation
+            Genuine TensorFlow.js COCO-SSD (80-Class) Inference Pipeline · Bounded Retry & Frame Scheduler · Stage-by-Stage Diagnostics
           </p>
         </div>
 
@@ -729,6 +866,7 @@ export const CameraWorkspace: React.FC<CameraWorkspaceProps> = ({
           {!liveWebcamActive ? (
             <button
               type="button"
+              data-testid="authorize-webcam-btn"
               onClick={startAuthorizedWebcam}
               className="px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-sky-600 hover:bg-sky-500 text-white transition-colors whitespace-nowrap shrink-0"
             >
@@ -738,6 +876,7 @@ export const CameraWorkspace: React.FC<CameraWorkspaceProps> = ({
           ) : (
             <button
               type="button"
+              data-testid="stop-webcam-btn"
               onClick={stopWebcam}
               className="px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-rose-600 hover:bg-rose-500 text-white transition-colors whitespace-nowrap shrink-0"
             >
@@ -748,20 +887,36 @@ export const CameraWorkspace: React.FC<CameraWorkspaceProps> = ({
         </div>
       </div>
 
-      {/* Truthful Measured Telemetry Strip (Part E & Part J) */}
+      {/* Truthful Measured Telemetry Strip (Section 3.3 & Section 7) */}
       <div
         data-testid="measured-vision-telemetry-bar"
         className="border border-slate-800 rounded-xl bg-slate-900/90 p-3.5 flex flex-wrap items-center justify-between gap-4 text-xs font-mono tabular-nums"
       >
         <div className="flex flex-wrap items-center gap-3">
+          <span
+            data-testid="camera-connection-status"
+            className={
+              cameraConnectionStatus === 'CONNECTED'
+                ? 'text-emerald-400 font-semibold'
+                : cameraConnectionStatus === 'ERROR' ||
+                  cameraConnectionStatus === 'PERMISSION REQUIRED'
+                ? 'text-rose-400 font-semibold'
+                : 'text-slate-300 font-semibold'
+            }
+          >
+            CAMERA: {cameraConnectionStatus}
+          </span>
+          <span>·</span>
           <span className="text-slate-400">
             MODEL:{' '}
             <strong className="text-slate-100">
               tfjs-coco-ssd-lite_mobilenet_v2
-            </strong>
+            </strong>{' '}
+            ({modelBackend})
           </span>
           <span>·</span>
           <span
+            data-testid="vision-model-status"
             className={
               modelStatus === 'READY' || modelStatus === 'RUNNING'
                 ? 'text-emerald-400 font-semibold'
@@ -770,7 +925,7 @@ export const CameraWorkspace: React.FC<CameraWorkspaceProps> = ({
                 : 'text-amber-400 font-semibold'
             }
           >
-            STATUS: {modelStatus}
+            MODEL STATUS: {modelStatus}
           </span>
           <span>·</span>
           <span className="text-slate-300">
@@ -778,7 +933,7 @@ export const CameraWorkspace: React.FC<CameraWorkspaceProps> = ({
           </span>
           <span>·</span>
           <span className="text-slate-300">
-            INFERENCE LATENCY:{' '}
+            LATENCY:{' '}
             {inferenceLatencyMs !== null ? `${inferenceLatencyMs}ms` : 'N/A'}
           </span>
         </div>
@@ -797,22 +952,69 @@ export const CameraWorkspace: React.FC<CameraWorkspaceProps> = ({
           </span>
           <span>·</span>
           <span>ERRORS: {errorCount}</span>
+          {(modelStatus === 'UNINITIALIZED' || modelStatus === 'ERROR') && (
+            <button
+              type="button"
+              data-testid="retry-model-init-btn"
+              onClick={() => void initializeVisionModel({ forceManualRetry: true })}
+              className="px-2.5 py-1 rounded bg-sky-600/20 border border-sky-500/40 text-sky-300 hover:bg-sky-600/30 font-semibold transition-colors"
+            >
+              <RefreshCw className="w-3 h-3 inline mr-1" />
+              {modelStatus === 'ERROR' ? 'Retry Model Init' : 'Preload Model'}
+            </button>
+          )}
         </div>
       </div>
 
       {(webcamError || lastModelError) && (
         <div
           role="status"
-          className="p-3.5 rounded-lg border border-amber-500/40 bg-amber-500/10 text-xs text-amber-200 flex items-center justify-between gap-4"
+          data-testid="vision-error-banner"
+          className="p-3.5 rounded-lg border border-amber-500/40 bg-amber-500/10 text-xs text-amber-200 flex flex-wrap items-center justify-between gap-4"
         >
-          <span>{webcamError || lastModelError}</span>
+          <div className="space-y-0.5">
+            {webcamError && <div>Camera Diagnostic: {webcamError}</div>}
+            {lastModelError && (
+              <div>
+                Model Diagnostic [{lastErrorCategory || 'ERROR'}]: {lastModelError}
+              </div>
+            )}
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            {lastModelError && (
+              <button
+                type="button"
+                onClick={() => void initializeVisionModel({ forceManualRetry: true })}
+                className="px-2.5 py-1 rounded bg-amber-500/20 border border-amber-400/40 text-amber-100 hover:bg-amber-500/30 font-semibold"
+              >
+                Retry Model Initialization
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                setWebcamError(null);
+                setLastModelError(null);
+              }}
+              className="text-xs font-medium underline whitespace-nowrap"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
+
+      {selfTestFeedback && (
+        <div
+          role="status"
+          data-testid="model-selftest-banner"
+          className="p-3.5 rounded-lg border border-sky-500/40 bg-sky-500/10 text-xs text-sky-200 font-mono flex flex-wrap items-center justify-between gap-3"
+        >
+          <span>{selfTestFeedback}</span>
           <button
             type="button"
-            onClick={() => {
-              setWebcamError(null);
-              setLastModelError(null);
-            }}
-            className="text-xs font-medium underline whitespace-nowrap shrink-0"
+            onClick={() => setSelfTestFeedback(null)}
+            className="text-xs font-sans font-medium underline shrink-0"
           >
             Dismiss
           </button>
@@ -862,14 +1064,16 @@ export const CameraWorkspace: React.FC<CameraWorkspaceProps> = ({
               </div>
             </div>
 
-            {/* Existing Video & Canvas Elements Preserved (Part D2) */}
+            {/* Video Element kept mounted without display:none so dimensions decode reliably (Section 3.2) */}
             <div className="relative aspect-video w-full bg-slate-950 flex items-center justify-center">
               <video
                 ref={videoRef}
                 muted
                 playsInline
-                className={`absolute inset-0 w-full h-full object-cover ${
-                  liveWebcamActive ? 'opacity-95' : 'hidden'
+                className={`absolute inset-0 w-full h-full object-cover transition-opacity ${
+                  liveWebcamActive
+                    ? 'opacity-95'
+                    : 'opacity-0 pointer-events-none'
                 }`}
               />
               <canvas
@@ -877,7 +1081,7 @@ export const CameraWorkspace: React.FC<CameraWorkspaceProps> = ({
                 width={768}
                 height={432}
                 data-testid="vision-telemetry-canvas"
-                className="w-full h-full object-cover"
+                className="w-full h-full object-cover relative z-10"
               />
             </div>
 
@@ -885,7 +1089,7 @@ export const CameraWorkspace: React.FC<CameraWorkspaceProps> = ({
               <div className="font-mono tabular-nums">
                 Active Detections ({provenanceMode}):{' '}
                 {provenanceMode === 'REAL_MODEL'
-                  ? realDetections.length
+                  ? selectedRealDetections.length
                   : selectedCamera.activeDetections.length}{' '}
                 · Camera-Scoped Tracks: {cameraTracks.length}
               </div>
@@ -910,26 +1114,76 @@ export const CameraWorkspace: React.FC<CameraWorkspaceProps> = ({
 
                 <button
                   type="button"
-                  data-testid="run-real-inference-btn"
+                  data-testid="verify-model-fixture-btn"
+                  disabled={isSelfTesting}
                   onClick={async () => {
-                    const targetEl =
-                      liveWebcamActive && videoRef.current
-                        ? videoRef.current
-                        : canvasRef.current;
-                    if (targetEl) {
-                      await executePipelinePass(targetEl, { isManualPass: true });
+                    if (isSelfTesting) return;
+                    setIsSelfTesting(true);
+                    try {
+                      const fixtureCanvas = document.createElement('canvas');
+                      fixtureCanvas.width = 320;
+                      fixtureCanvas.height = 240;
+                      const fCtx = fixtureCanvas.getContext('2d', {
+                        willReadFrequently: true,
+                      });
+                      if (fCtx) {
+                        fCtx.fillStyle = '#0f172a';
+                        fCtx.fillRect(0, 0, 320, 240);
+                        fCtx.fillStyle = '#38bdf8';
+                        fCtx.fillRect(110, 50, 100, 140);
+                      }
+                      await executePipelinePass(fixtureCanvas, {
+                        isManualPass: true,
+                        sourceType: 'TEST_FIXTURE',
+                        provenanceOverride: 'IMPORTED_SAMPLE',
+                      });
+                    } finally {
+                      setIsSelfTesting(false);
                     }
                   }}
-                  className="px-3 py-1.5 rounded-md bg-sky-600 hover:bg-sky-500 text-white font-semibold transition-colors whitespace-nowrap"
+                  className="px-3 py-1.5 rounded-md bg-slate-900 border border-slate-700 hover:bg-slate-800 disabled:opacity-50 text-slate-200 font-medium transition-colors whitespace-nowrap"
+                  title="Initializes COCO-SSD and verifies model tensor execution on an off-camera test canvas (labeled IMPORTED_SAMPLE, never mixes with live webcam detections)"
+                >
+                  <Activity className="w-3.5 h-3.5 inline mr-1.5 text-sky-400" />
+                  {isSelfTesting
+                    ? 'Running Self-Test...'
+                    : 'Verify Model Self-Test (Non-Camera)'}
+                </button>
+
+                <button
+                  type="button"
+                  data-testid="run-real-inference-btn"
+                  disabled={!liveWebcamActive}
+                  onClick={async () => {
+                    if (liveWebcamActive && videoRef.current) {
+                      await executePipelinePass(videoRef.current, {
+                        isManualPass: true,
+                        sourceType: 'LIVE_VIDEO',
+                        provenanceOverride: 'REAL_MODEL',
+                      });
+                    }
+                  }}
+                  title={
+                    liveWebcamActive
+                      ? 'Run an immediate COCO-SSD inference pass on the live connected webcam frame'
+                      : 'Unavailable: Connect and authorize a live local webcam first to run live camera inference'
+                  }
+                  className={`px-3 py-1.5 rounded-md font-semibold transition-colors whitespace-nowrap ${
+                    liveWebcamActive
+                      ? 'bg-sky-600 hover:bg-sky-500 text-white'
+                      : 'bg-slate-900 border border-slate-800 text-slate-500 cursor-not-allowed'
+                  }`}
                 >
                   <Cpu className="w-3.5 h-3.5 inline mr-1.5" />
-                  Run Real COCO-SSD Inference Pass
+                  {liveWebcamActive
+                    ? 'Run Live Camera Inference'
+                    : 'Live Inference (Connect Camera First)'}
                 </button>
               </div>
             </div>
           </div>
 
-          {/* Right Column: Performance Profile, Threshold Calibration & Active Detections */}
+          {/* Right Column: Performance Profile, Threshold Calibration, Stage Diagnostics & Active Detections */}
           <div className="lg:col-span-4 border border-slate-800 rounded-xl bg-slate-900 p-5 flex flex-col justify-between space-y-4">
             <div className="space-y-4">
               {/* Performance Profile & Threshold Configuration (Part D7 & Part J) */}
@@ -939,7 +1193,9 @@ export const CameraWorkspace: React.FC<CameraWorkspaceProps> = ({
                     <Sliders className="w-3.5 h-3.5 text-sky-400" />
                     SCHEDULER & FILTER GOVERNANCE
                   </span>
-                  <span>PROFILE: {performanceProfile}</span>
+                  <span>
+                    {filterConfig.enabledClasses.length} COCO CLASSES ACTIVE
+                  </span>
                 </div>
 
                 <div className="grid grid-cols-3 gap-1.5">
@@ -1019,12 +1275,81 @@ export const CameraWorkspace: React.FC<CameraWorkspaceProps> = ({
                 </div>
               </div>
 
+              {/* Section 3.7: Stage-by-Stage Detection Pipeline Diagnostics */}
+              <div
+                data-testid="pipeline-stage-diagnostics"
+                className="border-b border-slate-800 pb-3 space-y-2"
+              >
+                <div className="flex items-center justify-between text-xs font-mono">
+                  <span className="font-semibold text-slate-200">
+                    PIPELINE STAGE DIAGNOSTICS
+                  </span>
+                  <span className="text-slate-400">
+                    {stageDiagnostics ? stageDiagnostics.sourceType : 'NO PASS YET'}
+                  </span>
+                </div>
+                {stageDiagnostics ? (
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5 text-[11px] font-mono tabular-nums">
+                      <div className="p-1.5 rounded bg-slate-950 border border-slate-800">
+                        <div className="text-slate-400">Raw</div>
+                        <div className="text-slate-100 font-semibold">
+                          {stageDiagnostics.rawPredictionsCount}
+                        </div>
+                      </div>
+                      <div className="p-1.5 rounded bg-slate-950 border border-slate-800">
+                        <div className="text-slate-400">Valid</div>
+                        <div className="text-slate-100 font-semibold">
+                          {stageDiagnostics.validPredictionsCount}
+                        </div>
+                      </div>
+                      <div className="p-1.5 rounded bg-slate-950 border border-slate-800">
+                        <div className="text-slate-400">ClassDrop</div>
+                        <div className="text-amber-300 font-semibold">
+                          {stageDiagnostics.classFilteredCount}
+                        </div>
+                      </div>
+                      <div className="p-1.5 rounded bg-slate-950 border border-slate-800">
+                        <div className="text-slate-400">ConfDrop</div>
+                        <div className="text-amber-300 font-semibold">
+                          {stageDiagnostics.confidenceFilteredCount}
+                        </div>
+                      </div>
+                      <div className="p-1.5 rounded bg-slate-950 border border-slate-800">
+                        <div className="text-slate-400">NMSDrop</div>
+                        <div className="text-sky-300 font-semibold">
+                          {stageDiagnostics.nmsSuppressedCount}
+                        </div>
+                      </div>
+                      <div className="p-1.5 rounded bg-slate-950 border border-slate-800">
+                        <div className="text-slate-400">Final</div>
+                        <div className="text-emerald-400 font-semibold">
+                          {stageDiagnostics.finalDisplayedCount}
+                        </div>
+                      </div>
+                    </div>
+                    {stageDiagnostics.rawClassesObserved.length > 0 && (
+                      <div className="text-[11px] font-mono text-slate-400 truncate">
+                        Raw Classes:{' '}
+                        {stageDiagnostics.rawClassesObserved
+                          .map((c) => `${c.className} (${Math.round(c.score * 100)}%)`)
+                          .join(', ')}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-xs font-mono text-slate-500">
+                    Stage counts (Raw → Valid → Filtered → NMS → Final) populate on first model inference pass.
+                  </div>
+                )}
+              </div>
+
               {/* Provenance-Tagged Detections & Tracks List */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between text-xs font-semibold text-slate-200">
                   <span>
                     {provenanceMode === 'REAL_MODEL'
-                      ? `Real Model Detections (${realDetections.length})`
+                      ? `Real Model Detections (${selectedRealDetections.length})`
                       : `Simulated Demo Objects (${selectedCamera.activeDetections.length})`}
                   </span>
                   <span className="font-mono text-slate-400">
@@ -1032,16 +1357,18 @@ export const CameraWorkspace: React.FC<CameraWorkspaceProps> = ({
                   </span>
                 </div>
 
-                {provenanceMode === 'REAL_MODEL' && realDetections.length === 0 && (
+                {provenanceMode === 'REAL_MODEL' && selectedRealDetections.length === 0 && (
                   <div className="p-3 rounded-lg border border-slate-800 bg-slate-950 text-xs text-slate-400 font-mono">
                     {liveWebcamActive
-                      ? 'Model scanning live video frames — 0 objects above threshold in current frame.'
-                      : 'Live webcam is NOT CONNECTED. Authorize Local Webcam or click "Run Real COCO-SSD Inference Pass" to initialize and execute the neural network.'}
+                      ? `Live webcam CONNECTED (${modelStatus}). 0 objects above ${(
+                          filterConfig.globalMinConfidence * 100
+                        ).toFixed(0)}% confidence in current frame.`
+                      : 'Live webcam is NOT CONNECTED. Click "Authorize Local Webcam" to stream live video frames into COCO-SSD, or switch to SIMULATED_DEMO to inspect deterministic facility replay.'}
                   </div>
                 )}
 
                 {provenanceMode === 'REAL_MODEL'
-                  ? realDetections.map((det) => (
+                  ? selectedRealDetections.map((det) => (
                       <div
                         key={det.detectionId}
                         className="p-2.5 rounded-lg border border-emerald-500/30 bg-emerald-500/5 text-xs font-mono tabular-nums space-y-1"
@@ -1146,8 +1473,10 @@ export const CameraWorkspace: React.FC<CameraWorkspaceProps> = ({
               return (
                 <div
                   key={cam.id}
-                  className={`border rounded-xl p-4 transition-colors ${
-                    isSelected
+                  className={`border rounded-xl p-4 transition-all ${
+                    isFullscreen
+                      ? 'col-span-full border-sky-400 bg-sky-500/15 ring-1 ring-sky-500/40'
+                      : isSelected
                       ? 'border-sky-500 bg-sky-500/10'
                       : 'border-slate-800 bg-slate-900'
                   }`}
@@ -1157,6 +1486,7 @@ export const CameraWorkspace: React.FC<CameraWorkspaceProps> = ({
                       <div className="text-xs font-mono text-slate-400">
                         {cam.id} · {cam.protocol} ·{' '}
                         {cam.isSimulatedStream ? 'SIMULATED_DEMO' : 'REAL_STREAM'}
+                        {isFullscreen ? ' · EXPANDED FOCUS' : ''}
                       </div>
                       <h4 className="text-sm font-semibold text-slate-100 mt-0.5">
                         {cam.name}
@@ -1165,11 +1495,14 @@ export const CameraWorkspace: React.FC<CameraWorkspaceProps> = ({
                     <button
                       type="button"
                       aria-label={`Toggle fullscreen view for ${cam.name}`}
-                      onClick={() => setFullscreenCamId(isFullscreen ? null : cam.id)}
-                      className="p-1.5 text-slate-400 hover:text-slate-100 rounded-md"
+                      onClick={() => {
+                        setSelectedCameraId(cam.id);
+                        setFullscreenCamId(isFullscreen ? null : cam.id);
+                      }}
+                      className="p-1.5 text-slate-400 hover:text-slate-100 rounded-md border border-transparent hover:border-slate-700"
                     >
                       {isFullscreen ? (
-                        <Minimize2 className="w-4 h-4" />
+                        <Minimize2 className="w-4 h-4 text-sky-400" />
                       ) : (
                         <Maximize2 className="w-4 h-4" />
                       )}
@@ -1183,6 +1516,11 @@ export const CameraWorkspace: React.FC<CameraWorkspaceProps> = ({
                     <div>
                       State: {cam.connectorState} · {cam.fps} FPS · {cam.inferenceLatencyMs}ms
                     </div>
+                    {isFullscreen && (
+                      <div className="pt-1 text-sky-300">
+                        Resolution: {cam.resolution} · Bitrate: {cam.bitrateKbps} kbps · Packet Loss: {cam.packetLossPct}%
+                      </div>
+                    )}
                   </div>
 
                   <div className="mt-4 pt-3 border-t border-slate-800 flex items-center justify-between">

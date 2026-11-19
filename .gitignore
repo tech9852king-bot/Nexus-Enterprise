@@ -6,3 +6,8 @@ coverage/
 *.log
 .env*
 !.env.example
+.vanta-state.json
+.vanta-state.json.tmp
+.backup-*/
+.playwright-cli/
+

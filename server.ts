@@ -8,7 +8,9 @@ import {
   BRAIN_TOOLS_REGISTRY,
   appendAuditRecord,
   buildCorrelationPipelineStages,
+  buildDefaultBrainAiDiagnostics,
   buildSceneIntelligenceSummary,
+  classifyGeminiError,
   createDevicePairingSession,
   createInitialVantaState,
   evaluateCompoundPolicyRule,
@@ -19,10 +21,12 @@ import {
   sha256Hex,
   transitionIncidentState,
   updateObjectTracks,
+  validateAndHydrateSystemState,
   verifyAuditChain,
 } from './src/core/engine';
 import {
   AssistantPreferences,
+  BrainAiDiagnostics,
   ConversationMessage,
   DetectionFilterConfig,
   DeviceEntity,
@@ -34,6 +38,7 @@ import {
   VantaSystemState,
 } from './src/core/types';
 import {
+  ALL_COCO_SSD_CLASSES,
   evaluateDetectionEventRules,
   normalizedToBoundingBoxes,
   updateCameraObjectTracks,
@@ -43,62 +48,53 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const STATE_FILE_PATH = path.resolve(__dirname, '.vanta-state.json');
 
+function isGeminiKeyConfigured(): boolean {
+  const key = process.env.GEMINI_API_KEY;
+  return Boolean(key && key !== 'MY_GEMINI_API_KEY' && key.trim().length >= 10);
+}
+
 function hydrateV14State(base: VantaSystemState): VantaSystemState {
-  const fallback = createInitialVantaState();
-  const activeTracks = base.activeTracks || fallback.activeTracks || [];
-  const hydrated: VantaSystemState = {
-    ...base,
-    version: '15.0.0',
-    visionModel: base.visionModel || fallback.visionModel,
-    activeTracks,
-    workflows: base.workflows || fallback.workflows,
-    memoryGovernance: base.memoryGovernance || fallback.memoryGovernance,
-    observability: base.observability || fallback.observability,
-    detectionFilterConfig: base.detectionFilterConfig || fallback.detectionFilterConfig,
-    measuredVisionTelemetry: base.measuredVisionTelemetry || fallback.measuredVisionTelemetry,
-    detectionEventRules: base.detectionEventRules || fallback.detectionEventRules,
-    latestNormalizedDetections: base.latestNormalizedDetections || [],
-  };
-  hydrated.sceneSummaries = hydrated.cameras.map((cam) =>
-    buildSceneIntelligenceSummary(cam, activeTracks)
-  );
-  hydrated.correlationPipeline = buildCorrelationPipelineStages(hydrated);
-  return hydrated;
+  return validateAndHydrateSystemState(base, {
+    apiKeyConfigured: isGeminiKeyConfigured(),
+    upgradeLegacyClassFilter: false,
+  }).state;
 }
 
 function loadOrCreateState(): VantaSystemState {
+  const apiKeyReady = isGeminiKeyConfigured();
   try {
     if (fs.existsSync(STATE_FILE_PATH)) {
       const raw = fs.readFileSync(STATE_FILE_PATH, 'utf-8');
-      const parsed = JSON.parse(raw) as VantaSystemState;
-      if (parsed && Array.isArray(parsed.cameras)) {
-        // On cold server startup, no browser MediaStream is active yet; reset transient live webcam flags to Simulated
-        parsed.cameras = parsed.cameras.map((cam) => ({
-          ...cam,
-          isSimulatedStream: true,
-          connectorState:
-            cam.connectorState === 'Degraded' || cam.connectorState === 'Disconnected'
-              ? cam.connectorState
-              : 'Simulated',
-        }));
-        const hydrated = hydrateV14State(parsed);
-        saveState(hydrated);
-        return hydrated;
-      }
+      const parsed = JSON.parse(raw);
+      const { state: hydrated } = validateAndHydrateSystemState(parsed, {
+        apiKeyConfigured: apiKeyReady,
+        resetTransientWebcamOnBoot: true,
+      });
+      saveState(hydrated);
+      return hydrated;
     }
   } catch {
-    // Fall back to fresh verified baseline state
+    // Fall back to fresh verified baseline state if file is missing or unparseable JSON
   }
-  const initial = hydrateV14State(createInitialVantaState());
+  const { state: initial } = validateAndHydrateSystemState(createInitialVantaState(), {
+    apiKeyConfigured: apiKeyReady,
+    resetTransientWebcamOnBoot: true,
+  });
   saveState(initial);
   return initial;
 }
 
 function saveState(state: VantaSystemState): void {
+  const tmpPath = `${STATE_FILE_PATH}.tmp`;
   try {
-    fs.writeFileSync(STATE_FILE_PATH, JSON.stringify(state, null, 2), 'utf-8');
+    fs.writeFileSync(tmpPath, JSON.stringify(state, null, 2), 'utf-8');
+    fs.renameSync(tmpPath, STATE_FILE_PATH);
   } catch {
-    // Non-fatal in read-only containers
+    try {
+      fs.writeFileSync(STATE_FILE_PATH, JSON.stringify(state, null, 2), 'utf-8');
+    } catch {
+      // Non-fatal in read-only containers
+    }
   }
 }
 
@@ -141,7 +137,43 @@ function getGeminiClient(): GoogleGenAI | null {
 
 async function startServer() {
   const app = express();
+  app.disable('x-powered-by');
+  app.use((req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    if (req.path.startsWith('/api/')) {
+      res.setHeader('Cache-Control', 'no-store');
+    }
+    next();
+  });
   app.use(express.json({ limit: '2mb' }));
+  app.use(
+    (
+      err: unknown,
+      _req: Request,
+      res: Response,
+      next: express.NextFunction
+    ) => {
+      if (err instanceof SyntaxError && 'body' in err) {
+        res.status(400).json({ error: 'Malformed JSON request payload.' });
+        return;
+      }
+      next(err);
+    }
+  );
+
+  // Operational Health & Readiness Endpoint
+  app.get('/api/health', (_req: Request, res: Response) => {
+    const auditIntegrity = verifyAuditChain(systemState.auditTrail);
+    res.json({
+      status: auditIntegrity.valid ? 'HEALTHY' : 'DEGRADED',
+      version: systemState.version,
+      syncRevision: systemState.syncRevision,
+      connectedClients: Math.max(1, sseClients.size),
+      auditIntegrity,
+      geminiConfigured: isGeminiKeyConfigured(),
+    });
+  });
 
   // Real-time Cloud Synchronization SSE Stream
   app.get('/api/sync/stream', (req: Request, res: Response) => {
@@ -162,7 +194,17 @@ async function startServer() {
     });
     res.write(`data: ${initialPayload}\n\n`);
 
+    const keepAliveTimer = setInterval(() => {
+      try {
+        res.write(': keepalive\n\n');
+      } catch {
+        clearInterval(keepAliveTimer);
+        sseClients.delete(res);
+      }
+    }, 25000);
+
     req.on('close', () => {
+      clearInterval(keepAliveTimer);
       sseClients.delete(res);
       systemState.connectedClients = Math.max(1, sseClients.size);
     });
@@ -325,16 +367,31 @@ async function startServer() {
       return;
     }
     const zone = systemState.zones.find((z) => z.id === policy.targetZoneId) || systemState.zones[0];
-    const occupancy = Number(req.body?.occupancy ?? zone.currentOccupancy);
-    const maxDwellSeconds = Number(req.body?.maxDwellSeconds ?? 148);
-    const confidence = Number(req.body?.confidence ?? 0.94);
+    const rawOccupancy = Number(req.body?.occupancy ?? zone.currentOccupancy);
+    const rawDwell = Number(req.body?.maxDwellSeconds ?? 148);
+    const rawConfidence = Number(req.body?.confidence ?? 0.94);
+    if (
+      !Number.isFinite(rawOccupancy) ||
+      rawOccupancy < 0 ||
+      !Number.isFinite(rawDwell) ||
+      rawDwell < 0 ||
+      !Number.isFinite(rawConfidence) ||
+      rawConfidence < 0 ||
+      rawConfidence > 1
+    ) {
+      res.status(400).json({
+        error:
+          'Invalid policy evaluation parameters: occupancy and maxDwellSeconds must be non-negative numbers, and confidence must be between 0 and 1.',
+      });
+      return;
+    }
     const isRestrictedHours = Boolean(req.body?.isRestrictedHours ?? true);
 
     const evaluation = evaluateCompoundPolicyRule(policy, {
       zoneId: zone.id,
-      occupancy,
-      maxDwellSeconds,
-      confidence,
+      occupancy: Math.round(rawOccupancy),
+      maxDwellSeconds: Math.round(rawDwell),
+      confidence: rawConfidence,
       isRestrictedHours,
     });
 
@@ -347,10 +404,22 @@ async function startServer() {
       res.status(403).json({ error: 'AUDITOR role cannot create device pairing tokens.' });
       return;
     }
-    const deviceName = String(req.body?.deviceName || '').trim();
-    const targetPlatform = (req.body?.targetPlatform || 'Android Node') as DeviceEntity['platform'];
+    const deviceName = String(req.body?.deviceName || '').trim().slice(0, 80);
+    const validPlatforms: DeviceEntity['platform'][] = [
+      'Android Node',
+      'Tablet Command',
+      'Windows Workstation',
+      'Linux Edge Node',
+      'IP Camera Bridge',
+    ];
+    const requestedPlatform = req.body?.targetPlatform as DeviceEntity['platform'];
+    const targetPlatform: DeviceEntity['platform'] = validPlatforms.includes(
+      requestedPlatform
+    )
+      ? requestedPlatform
+      : 'Android Node';
     if (deviceName.length < 3) {
-      res.status(400).json({ error: 'Device name must be at least 3 characters.' });
+      res.status(400).json({ error: 'Device name must be between 3 and 80 characters.' });
       return;
     }
 
@@ -412,6 +481,7 @@ async function startServer() {
     }
     const nowIso = new Date().toISOString();
     const nextAuthorized = !dev.authorized;
+    const seededDeviceIds = new Set(['DEV-AND-01', 'DEV-TAB-02', 'DEV-WIN-03']);
     systemState = {
       ...systemState,
       syncRevision: systemState.syncRevision + 1,
@@ -421,7 +491,11 @@ async function startServer() {
           ? {
               ...d,
               authorized: nextAuthorized,
-              connectorState: nextAuthorized ? 'Connected' : 'Disconnected',
+              connectorState: nextAuthorized
+                ? !seededDeviceIds.has(d.id) && d.pairedVia === 'QR_TOKEN'
+                  ? 'Connected'
+                  : 'Simulated'
+                : 'Disconnected',
               lastSyncIso: nowIso,
             }
           : d
@@ -441,6 +515,10 @@ async function startServer() {
     broadcastSyncState('DEVICE_UPDATED');
     res.json({ state: systemState });
   });
+
+  const baselineCamerasById = new Map(
+    createInitialVantaState().cameras.map((c) => [c.id, c])
+  );
 
   // Record Measured Camera Frame Telemetry / Real Model Detections from Local Authorized Webcam or Demo
   app.post('/api/cameras/:id/telemetry', (req: Request, res: Response) => {
@@ -468,22 +546,42 @@ async function startServer() {
         ? Math.max(0, Number(req.body.motionScore))
         : 0;
     const incomingDetections = Array.isArray(req.body?.normalizedDetections)
-      ? (req.body.normalizedDetections as NormalizedDetection[])
+      ? (req.body.normalizedDetections as NormalizedDetection[]).filter(
+          (d): d is NormalizedDetection =>
+            Boolean(
+              d &&
+                typeof d === 'object' &&
+                typeof d.className === 'string' &&
+                d.className.trim().length > 0 &&
+                typeof d.confidence === 'number' &&
+                Number.isFinite(d.confidence) &&
+                d.boundingBox &&
+                typeof d.boundingBox === 'object' &&
+                Number.isFinite(d.boundingBox.x) &&
+                Number.isFinite(d.boundingBox.y) &&
+                Number.isFinite(d.boundingBox.width) &&
+                Number.isFinite(d.boundingBox.height) &&
+                d.boundingBox.width > 0 &&
+                d.boundingBox.height > 0
+            )
+        )
       : null;
     const incomingTelemetry = (req.body?.measuredVisionTelemetry || null) as Partial<MeasuredVisionTelemetry> | null;
+    const isSelfTestPass = !isLiveWebcam && !Array.isArray(req.body?.normalizedDetections);
 
     let nextTracks = systemState.activeTracks || [];
     let updatedActiveDetections = cam.activeDetections;
     let ruleEvents: SecurityEvent[] = [];
 
-    if (incomingDetections) {
+    if (isLiveWebcam && incomingDetections) {
       nextTracks = updateCameraObjectTracks(nextTracks, incomingDetections, cam.id, cam.zoneId, {
         nowIso,
       });
-      updatedActiveDetections =
-        incomingDetections.length > 0 || isLiveWebcam
-          ? normalizedToBoundingBoxes(incomingDetections, nextTracks, cam.zoneId)
-          : cam.activeDetections;
+      updatedActiveDetections = normalizedToBoundingBoxes(
+        incomingDetections,
+        nextTracks,
+        cam.zoneId
+      );
       ruleEvents = evaluateDetectionEventRules(
         nextTracks,
         incomingDetections,
@@ -498,6 +596,19 @@ async function startServer() {
           zoneName: cam.zoneName,
           nowIso,
         }
+      );
+    } else if (!isLiveWebcam && incomingDetections !== null) {
+      // Webcam stopped: restore baseline simulated detections and tracks for this camera
+      const baselineCam = baselineCamerasById.get(cam.id);
+      updatedActiveDetections = baselineCam
+        ? baselineCam.activeDetections.map((d) => ({ ...d }))
+        : cam.activeDetections;
+      nextTracks = updateObjectTracks(
+        nextTracks.filter((t) => t.cameraId !== cam.id),
+        updatedActiveDetections,
+        cam.id,
+        cam.zoneId,
+        nowIso
       );
     } else {
       nextTracks = updateObjectTracks(nextTracks, cam.activeDetections, cam.id, cam.zoneId, nowIso);
@@ -535,29 +646,73 @@ async function startServer() {
       ...(motionEvent ? [motionEvent] : []),
     ];
 
-    const nextCameras = systemState.cameras.map((c) =>
-      c.id === camId
-        ? {
+    const nextCameras = systemState.cameras.map((c) => {
+      const baselineCam = baselineCamerasById.get(c.id);
+      if (c.id === camId) {
+        if (isSelfTestPass) {
+          // Non-camera self-test: record latency & heartbeat without altering stream connectorState or baseline boxes
+          return {
             ...c,
-            isSimulatedStream: !isLiveWebcam,
-            connectorState: isLiveWebcam ? ('Connected' as const) : ('Simulated' as const),
-            fps: isLiveWebcam ? fps : c.fps,
+            inferenceLatencyMs: latencyMs,
+            lastHeartbeatIso: nowIso,
+          };
+        }
+        if (isLiveWebcam) {
+          const livePersonCount = updatedActiveDetections.filter(
+            (d) => d.label === 'person'
+          ).length;
+          return {
+            ...c,
+            isSimulatedStream: false,
+            connectorState: 'Connected' as const,
+            fps,
             inferenceLatencyMs: latencyMs,
             lastHeartbeatIso: nowIso,
             activeDetections: updatedActiveDetections,
             occupancyCount:
-              updatedActiveDetections.filter((d) => d.label === 'person').length ||
-              c.occupancyCount,
-          }
-        : c
-    );
+              incomingDetections !== null ? livePersonCount : c.occupancyCount,
+          };
+        }
+        // Webcam explicitly stopped on this camera: restore deterministic baseline state
+        return {
+          ...c,
+          isSimulatedStream: true,
+          connectorState: baselineCam?.connectorState || ('Simulated' as const),
+          fps: baselineCam?.fps ?? c.fps,
+          inferenceLatencyMs: latencyMs,
+          lastHeartbeatIso: nowIso,
+          activeDetections: updatedActiveDetections,
+          occupancyCount: baselineCam?.occupancyCount ?? c.occupancyCount,
+        };
+      }
+      // If another camera was previously left in live-webcam mode (!c.isSimulatedStream), restore it to baseline
+      if (!isSelfTestPass && !c.isSimulatedStream) {
+        return {
+          ...c,
+          isSimulatedStream: true,
+          connectorState: baselineCam?.connectorState || ('Simulated' as const),
+          fps: baselineCam?.fps ?? c.fps,
+          activeDetections: baselineCam
+            ? baselineCam.activeDetections.map((d) => ({ ...d }))
+            : c.activeDetections,
+          occupancyCount: baselineCam?.occupancyCount ?? c.occupancyCount,
+        };
+      }
+      return c;
+    });
 
-    const prevOtherDetections = (systemState.latestNormalizedDetections || []).filter(
-      (d) => d.cameraId !== cam.id
-    );
-    const nextNormalizedDetections = incomingDetections
-      ? [...incomingDetections, ...prevOtherDetections].slice(0, 50)
-      : systemState.latestNormalizedDetections || [];
+    const nextNormalizedDetections = isSelfTestPass
+      ? systemState.latestNormalizedDetections || []
+      : isLiveWebcam && incomingDetections
+      ? [
+          ...incomingDetections,
+          ...(systemState.latestNormalizedDetections || []).filter(
+            (d) => d.cameraId !== cam.id && d.provenance !== 'REAL_MODEL'
+          ),
+        ].slice(0, 50)
+      : (systemState.latestNormalizedDetections || []).filter(
+          (d) => d.provenance !== 'REAL_MODEL'
+        );
 
     systemState = hydrateV14State({
       ...systemState,
@@ -594,20 +749,83 @@ async function startServer() {
   // Update V15.0 Detection Filter Configuration & Performance Profile
   app.post('/api/vision/config', (req: Request, res: Response) => {
     const nowIso = new Date().toISOString();
-    const filterPatch = (req.body?.filterConfig || {}) as Partial<DetectionFilterConfig>;
-    const telemetryPatch = {
-      ...(req.body?.telemetryPatch || {}),
-      ...(req.body?.performanceProfile
-        ? { performanceProfile: req.body.performanceProfile }
+    const rawFilter = (req.body?.filterConfig || {}) as Partial<DetectionFilterConfig>;
+    const sanitizedFilter: Partial<DetectionFilterConfig> = {};
+
+    if (
+      typeof rawFilter.globalMinConfidence === 'number' &&
+      Number.isFinite(rawFilter.globalMinConfidence)
+    ) {
+      sanitizedFilter.globalMinConfidence = Math.max(
+        0.1,
+        Math.min(0.99, rawFilter.globalMinConfidence)
+      );
+    }
+    if (
+      typeof rawFilter.displayThreshold === 'number' &&
+      Number.isFinite(rawFilter.displayThreshold)
+    ) {
+      sanitizedFilter.displayThreshold = Math.max(
+        0.1,
+        Math.min(0.99, rawFilter.displayThreshold)
+      );
+    }
+    if (
+      typeof rawFilter.nmsIouThreshold === 'number' &&
+      Number.isFinite(rawFilter.nmsIouThreshold)
+    ) {
+      sanitizedFilter.nmsIouThreshold = Math.max(
+        0.1,
+        Math.min(0.95, rawFilter.nmsIouThreshold)
+      );
+    }
+    if (Array.isArray(rawFilter.enabledClasses) && rawFilter.enabledClasses.length > 0) {
+      sanitizedFilter.enabledClasses = rawFilter.enabledClasses
+        .map((c) => String(c))
+        .slice(0, 100);
+    }
+
+    const validProfiles = ['LOW_RESOURCE', 'BALANCED', 'HIGH_PERFORMANCE'] as const;
+    const reqProfile =
+      req.body?.performanceProfile || req.body?.telemetryPatch?.performanceProfile;
+    const safeProfile = validProfiles.includes(reqProfile)
+      ? reqProfile
+      : undefined;
+
+    const rawPatch =
+      req.body?.telemetryPatch && typeof req.body.telemetryPatch === 'object'
+        ? (req.body.telemetryPatch as Partial<MeasuredVisionTelemetry>)
+        : {};
+    const validModelStatuses: MeasuredVisionTelemetry['modelStatus'][] = [
+      'UNINITIALIZED',
+      'LOADING',
+      'READY',
+      'RUNNING',
+      'ERROR',
+      'DISPOSED',
+    ];
+    const telemetryPatch: Partial<MeasuredVisionTelemetry> = {
+      ...(safeProfile ? { performanceProfile: safeProfile } : {}),
+      ...(rawPatch.modelStatus && validModelStatuses.includes(rawPatch.modelStatus)
+        ? { modelStatus: rawPatch.modelStatus }
         : {}),
-    } as Partial<MeasuredVisionTelemetry>;
+      ...(typeof rawPatch.cameraFps === 'number' && Number.isFinite(rawPatch.cameraFps)
+        ? { cameraFps: Math.max(0, rawPatch.cameraFps) }
+        : {}),
+      ...(typeof rawPatch.inferenceFps === 'number' && Number.isFinite(rawPatch.inferenceFps)
+        ? { inferenceFps: Math.max(0, rawPatch.inferenceFps) }
+        : {}),
+      ...(typeof rawPatch.inferenceLatencyMs === 'number' && Number.isFinite(rawPatch.inferenceLatencyMs)
+        ? { inferenceLatencyMs: Math.max(0, rawPatch.inferenceLatencyMs) }
+        : {}),
+    };
 
     systemState = hydrateV14State({
       ...systemState,
       syncRevision: systemState.syncRevision + 1,
       lastCloudSyncIso: nowIso,
       detectionFilterConfig: systemState.detectionFilterConfig
-        ? { ...systemState.detectionFilterConfig, ...filterPatch }
+        ? { ...systemState.detectionFilterConfig, ...sanitizedFilter }
         : undefined,
       measuredVisionTelemetry: systemState.measuredVisionTelemetry
         ? { ...systemState.measuredVisionTelemetry, ...telemetryPatch }
@@ -619,7 +837,46 @@ async function startServer() {
 
   // Update ALEANA Voice & Assistant Preferences
   app.post('/api/preferences', (req: Request, res: Response) => {
-    const partial = req.body as Partial<AssistantPreferences>;
+    const rawPrefs = (req.body || {}) as Partial<AssistantPreferences>;
+    const validLangs = ['en', 'hi', 'hinglish'] as const;
+    const validProviders = ['BROWSER_SPEECH_SYNTHESIS', 'GEMINI_SERVER_SYNTHESIS'] as const;
+    const validModes = ['PUSH_TO_TALK', 'CONTINUOUS', 'TEXT_ONLY'] as const;
+    const sanitizedPrefs: Partial<AssistantPreferences> = {};
+
+    if (
+      rawPrefs.voiceProvider &&
+      validProviders.includes(rawPrefs.voiceProvider)
+    ) {
+      sanitizedPrefs.voiceProvider = rawPrefs.voiceProvider;
+    }
+    if (
+      rawPrefs.languagePreference &&
+      validLangs.includes(rawPrefs.languagePreference)
+    ) {
+      sanitizedPrefs.languagePreference = rawPrefs.languagePreference;
+    }
+    if (
+      rawPrefs.conversationMode &&
+      validModes.includes(rawPrefs.conversationMode)
+    ) {
+      sanitizedPrefs.conversationMode = rawPrefs.conversationMode;
+    }
+    if (typeof rawPrefs.autoSpeakResponses === 'boolean') {
+      sanitizedPrefs.autoSpeakResponses = rawPrefs.autoSpeakResponses;
+    }
+    if (
+      typeof rawPrefs.speakingRate === 'number' &&
+      Number.isFinite(rawPrefs.speakingRate)
+    ) {
+      sanitizedPrefs.speakingRate = Math.max(
+        0.5,
+        Math.min(2.0, rawPrefs.speakingRate)
+      );
+    }
+    if (typeof rawPrefs.volume === 'number' && Number.isFinite(rawPrefs.volume)) {
+      sanitizedPrefs.volume = Math.max(0, Math.min(1.0, rawPrefs.volume));
+    }
+
     const nowIso = new Date().toISOString();
     systemState = {
       ...systemState,
@@ -627,7 +884,7 @@ async function startServer() {
       lastCloudSyncIso: nowIso,
       preferences: {
         ...systemState.preferences,
-        ...partial,
+        ...sanitizedPrefs,
       },
     };
     broadcastSyncState('PREFERENCES_UPDATED');
@@ -637,25 +894,100 @@ async function startServer() {
   // Direct Authorized Tool Execution Endpoint (25 Brain Tools)
   app.post('/api/brain/execute-tool', (req: Request, res: Response) => {
     const toolName = String(req.body?.toolName || '');
-    const args = (req.body?.args || {}) as Record<string, unknown>;
+    const args =
+      req.body?.args && typeof req.body.args === 'object' && !Array.isArray(req.body.args)
+        ? (req.body.args as Record<string, unknown>)
+        : {};
     const { record, updatedState } = executeBrainTool(systemState, toolName, args, {
       confirmedConsequential: true,
     });
-    systemState = {
+    systemState = hydrateV14State({
       ...updatedState,
       syncRevision: updatedState.syncRevision + 1,
       lastCloudSyncIso: new Date().toISOString(),
-    };
+    });
     broadcastSyncState('BRAIN_TOOL_EXECUTED');
     res.json({ record, state: systemState });
+  });
+
+  // Section 5 & 7: Vanta Brain & Gemini Health / Readiness Diagnostic Endpoint
+  app.get('/api/brain/health', async (req: Request, res: Response) => {
+    const probe = req.query.probe === 'true';
+    const ai = getGeminiClient();
+    const nowIso = new Date().toISOString();
+
+    if (!ai) {
+      const diag = buildDefaultBrainAiDiagnostics(false);
+      systemState = {
+        ...systemState,
+        brainAiDiagnostics: diag,
+      };
+      res.json({
+        diagnostics: diag,
+        localPipelineReady: true,
+        toolsRegistered: BRAIN_TOOLS_REGISTRY.length,
+      });
+      return;
+    }
+
+    if (probe) {
+      const t0 = Date.now();
+      try {
+        const probeRes = await ai.models.generateContent({
+          model: 'gemini-4-hydrogen',
+          contents: 'Respond with the single word READY.',
+        });
+        const text = (probeRes.text || '').trim();
+        if (!text) {
+          throw new Error('Empty response from Gemini model');
+        }
+        const diag: BrainAiDiagnostics = {
+          status: 'GEMINI CONNECTED',
+          geminiConfigured: true,
+          modelName: 'gemini-4-hydrogen',
+          fallbackModelName: 'vanta-brain-9layer-v16-fallback',
+          lastErrorCategory: null,
+          lastErrorMessage: null,
+          lastCheckedIso: nowIso,
+          lastResponseLatencyMs: Math.max(1, Date.now() - t0),
+          usingFallback: false,
+        };
+        systemState = { ...systemState, brainAiDiagnostics: diag };
+        broadcastSyncState('BRAIN_HEALTH_VERIFIED');
+      } catch (err) {
+        const classified = classifyGeminiError(err);
+        const diag: BrainAiDiagnostics = {
+          status: classified.status,
+          geminiConfigured: true,
+          modelName: 'gemini-4-hydrogen',
+          fallbackModelName: 'vanta-brain-9layer-v16-fallback',
+          lastErrorCategory: classified.errorCategory,
+          lastErrorMessage: classified.sanitizedMessage,
+          lastCheckedIso: nowIso,
+          lastResponseLatencyMs: Math.max(1, Date.now() - t0),
+          usingFallback: true,
+        };
+        systemState = { ...systemState, brainAiDiagnostics: diag };
+        broadcastSyncState('BRAIN_HEALTH_VERIFIED');
+      }
+    }
+
+    res.json({
+      diagnostics:
+        systemState.brainAiDiagnostics || buildDefaultBrainAiDiagnostics(isGeminiKeyConfigured()),
+      localPipelineReady: true,
+      toolsRegistered: BRAIN_TOOLS_REGISTRY.length,
+    });
   });
 
   // Unified Vanta Brain + ALEANA Conversational Reasoning Endpoint
   app.post('/api/brain/query', async (req: Request, res: Response) => {
     const startMs = Date.now();
-    const query = String(req.body?.query || '').trim();
+    const query = String(req.body?.query || '').trim().slice(0, 2000);
     const modality = (req.body?.modality === 'VOICE_ALEANA' ? 'VOICE_ALEANA' : 'TEXT') as 'TEXT' | 'VOICE_ALEANA';
-    const preferredLanguage = req.body?.language as 'en' | 'hi' | 'hinglish' | undefined;
+    const validLangs = ['en', 'hi', 'hinglish'] as const;
+    const rawLang = req.body?.language;
+    const preferredLanguage = validLangs.includes(rawLang) ? rawLang : undefined;
 
     if (!query) {
       res.status(400).json({ error: 'Query cannot be empty.' });
@@ -680,11 +1012,14 @@ async function startServer() {
     let directAnswer = pipelineResult.directAnswer;
     let keyFindings = pipelineResult.keyFindings;
     let recommendedNextAction = pipelineResult.recommendedNextAction;
-    let modelUsed = 'vanta-brain-9layer-deterministic';
+    let uncertaintyDisclosure = pipelineResult.uncertaintyDisclosure;
+    let modelUsed = 'vanta-brain-9layer-v16-fallback (GEMINI_UNAVAILABLE: API_KEY_MISSING)';
+    let nextDiagnostics: BrainAiDiagnostics = buildDefaultBrainAiDiagnostics(false);
 
-    // Enhance with Server-Side Gemini 4 ('gemini-4-hydrogen') when GEMINI_API_KEY is available
+    // Enhance with Server-Side Gemini ('gemini-4-hydrogen') when GEMINI_API_KEY is available
     const ai = getGeminiClient();
     if (ai) {
+      const geminiStartMs = Date.now();
       try {
         const languageDirective =
           pipelineResult.detectedLanguage === 'hi'
@@ -714,7 +1049,7 @@ async function startServer() {
             },
           ],
           config: {
-            systemInstruction: `You are Vanta Brain (and ALEANA Voice Intelligence) inside VantaVisionAI V11.0 (Vanta Nexus Command Center).
+            systemInstruction: `You are Vanta Brain (and ALEANA Voice Intelligence) inside VantaVisionAI V16.0 (Vanta Nexus Command Center).
 Strictly ground every claim in the Verified Vanta Nexus Tool Outputs provided. Never invent cameras, incidents, or metrics.
 ${languageDirective}
 Return JSON matching the schema.`,
@@ -746,23 +1081,51 @@ Return JSON matching the schema.`,
           keyFindings?: string[];
           recommendedNextAction?: string;
         };
-        if (parsed.directAnswer) {
-          directAnswer = parsed.directAnswer;
-          if (Array.isArray(parsed.keyFindings) && parsed.keyFindings.length > 0) {
-            keyFindings = parsed.keyFindings;
-          }
-          if (parsed.recommendedNextAction) {
-            recommendedNextAction = parsed.recommendedNextAction;
-          }
-          modelUsed = 'gemini-4-hydrogen + vanta-9layer';
+        if (!parsed.directAnswer) {
+          throw new Error('Gemini returned empty directAnswer payload.');
         }
-      } catch {
-        // Transparently preserve deterministic 9-layer grounded output if Gemini call fails
-        modelUsed = 'vanta-brain-9layer-verified-fallback';
+        directAnswer = parsed.directAnswer;
+        if (Array.isArray(parsed.keyFindings) && parsed.keyFindings.length > 0) {
+          keyFindings = parsed.keyFindings;
+        }
+        if (parsed.recommendedNextAction) {
+          recommendedNextAction = parsed.recommendedNextAction;
+        }
+        const geminiLatencyMs = Math.max(1, Date.now() - geminiStartMs);
+        modelUsed = 'gemini-4-hydrogen + vanta-9layer';
+        nextDiagnostics = {
+          status: 'GEMINI CONNECTED',
+          geminiConfigured: true,
+          modelName: 'gemini-4-hydrogen',
+          fallbackModelName: 'vanta-brain-9layer-v16-fallback',
+          lastErrorCategory: null,
+          lastErrorMessage: null,
+          lastCheckedIso: new Date().toISOString(),
+          lastResponseLatencyMs: geminiLatencyMs,
+          usingFallback: false,
+        };
+      } catch (err) {
+        const classified = classifyGeminiError(err);
+        const geminiLatencyMs = Math.max(1, Date.now() - geminiStartMs);
+        modelUsed = `vanta-brain-9layer-v16-fallback (${classified.errorCategory})`;
+        uncertaintyDisclosure = `[FALLBACK MODE — ${classified.status}: ${classified.sanitizedMessage}] ${pipelineResult.uncertaintyDisclosure}`;
+        nextDiagnostics = {
+          status: classified.status,
+          geminiConfigured: true,
+          modelName: 'gemini-4-hydrogen',
+          fallbackModelName: 'vanta-brain-9layer-v16-fallback',
+          lastErrorCategory: classified.errorCategory,
+          lastErrorMessage: classified.sanitizedMessage,
+          lastCheckedIso: new Date().toISOString(),
+          lastResponseLatencyMs: geminiLatencyMs,
+          usingFallback: true,
+        };
       }
+    } else {
+      uncertaintyDisclosure = `[FALLBACK MODE — GEMINI UNAVAILABLE (API_KEY_MISSING): Configure GEMINI_API_KEY in AI Studio Settings > Secrets for live Gemini synthesis. Response generated by Vanta Brain 9-Layer deterministic tool pipeline.] ${pipelineResult.uncertaintyDisclosure}`;
     }
 
-    const totalLatencyMs = Math.max(18, Date.now() - startMs);
+    const totalLatencyMs = Math.max(1, Date.now() - startMs);
     const assistantMsg: ConversationMessage = {
       id: `MSG-AI-${Date.now().toString(36).toUpperCase()}`,
       conversationId: 'CONV-PRIMARY',
@@ -775,7 +1138,7 @@ Return JSON matching the schema.`,
       keyFindings,
       evidenceCitations: pipelineResult.evidenceCitations,
       epistemicBreakdown: pipelineResult.epistemicBreakdown,
-      uncertaintyDisclosure: pipelineResult.uncertaintyDisclosure,
+      uncertaintyDisclosure,
       recommendedNextAction,
       layerTraces: pipelineResult.layerTraces,
       toolExecutions: pipelineResult.toolExecutions,
@@ -789,6 +1152,7 @@ Return JSON matching the schema.`,
       syncRevision: systemState.syncRevision + 1,
       lastCloudSyncIso: assistantMsg.timestampIso,
       conversations: nextConversations,
+      brainAiDiagnostics: nextDiagnostics,
       memoryGovernance: systemState.memoryGovernance
         ? {
             ...systemState.memoryGovernance,
@@ -800,6 +1164,7 @@ Return JSON matching the schema.`,
     broadcastSyncState('BRAIN_CONVERSATION_UPDATED');
     res.json({
       message: assistantMsg,
+      diagnostics: nextDiagnostics,
       state: systemState,
     });
   });
@@ -820,6 +1185,13 @@ Return JSON matching the schema.`,
 
   // Conversation Memory & Context Governance (Section 9)
   app.post('/api/memory/manage', (req: Request, res: Response) => {
+    if (systemState.tenant.role === 'AUDITOR') {
+      res.status(403).json({
+        error: 'AUDITOR role is read-only and cannot reset conversation memory or modify retention policies.',
+        state: systemState,
+      });
+      return;
+    }
     const action = req.body?.action === 'UPDATE_RETENTION' ? 'UPDATE_RETENTION' : 'RESET_CONVERSATION';
     const retentionDays = typeof req.body?.retentionDays === 'number' ? req.body.retentionDays : undefined;
     systemState = hydrateV14State(manageConversationMemory(systemState, action, retentionDays));
@@ -834,8 +1206,28 @@ Return JSON matching the schema.`,
       verification,
       totalRecords: systemState.auditTrail.length,
       auditTrail: systemState.auditTrail.slice().reverse(),
+      verifiedAtIso: new Date().toISOString(),
     });
   });
+
+  // Defensive API 404 & Error Boundary (Zero stack trace leaks on /api/*)
+  app.use('/api/*', (_req: Request, res: Response) => {
+    res.status(404).json({ error: 'API endpoint not found.' });
+  });
+  app.use(
+    (
+      _err: unknown,
+      req: Request,
+      res: Response,
+      next: express.NextFunction
+    ) => {
+      if (req.path.startsWith('/api/')) {
+        res.status(500).json({ error: 'Internal server error.' });
+        return;
+      }
+      next(_err);
+    }
+  );
 
   // Mount Vite Dev Server or Production Static Bundle
   if (process.env.NODE_ENV !== 'production') {
@@ -855,7 +1247,7 @@ Return JSON matching the schema.`,
 
   const port = Number(process.env.PORT || 3000);
   app.listen(port, '0.0.0.0', () => {
-    console.log(`VantaVisionAI V11.0 (Vanta Nexus) Server listening on http://0.0.0.0:${port}`);
+    console.log(`VantaVisionAI V16.0 (Vanta Nexus) Server listening on http://0.0.0.0:${port}`);
   });
 }
 

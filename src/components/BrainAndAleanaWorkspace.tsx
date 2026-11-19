@@ -7,7 +7,9 @@ import {
   Mic,
   MicOff,
   Play,
+  RefreshCw,
   Send,
+  ShieldAlert,
   Sparkles,
   Square,
   Volume2,
@@ -15,6 +17,7 @@ import {
   Wrench,
 } from 'lucide-react';
 import {
+  AleanaSubsystemStatus,
   AssistantPreferences,
   BrainToolDefinition,
   ConversationMessage,
@@ -29,13 +32,20 @@ interface BrainAndAleanaWorkspaceProps {
     modality: 'TEXT' | 'VOICE_ALEANA',
     language?: 'en' | 'hi' | 'hinglish'
   ) => Promise<ConversationMessage | null>;
-  onExecuteTool: (toolName: string, args?: Record<string, unknown>) => Promise<void>;
+  onVerifyGemini?: () => Promise<void>;
+  onExecuteTool: (
+    toolName: string,
+    args?: Record<string, unknown>
+  ) => Promise<{ error?: string; message?: string } | void>;
   onUpdatePreferences: (prefs: Partial<AssistantPreferences>) => Promise<void>;
-  onExecuteWorkflow?: (workflowId: string, approvedByHuman?: boolean) => Promise<void>;
+  onExecuteWorkflow?: (
+    workflowId: string,
+    approvedByHuman?: boolean
+  ) => Promise<{ error?: string; message?: string } | void>;
   onManageMemory?: (
     action: 'RESET_CONVERSATION' | 'UPDATE_RETENTION',
     retentionDays?: number
-  ) => Promise<void>;
+  ) => Promise<{ error?: string; message?: string } | void>;
 }
 
 type VoiceStage = 'IDLE' | 'LISTENING' | 'PROCESSING' | 'SPEAKING' | 'INTERRUPTED' | 'ERROR';
@@ -44,6 +54,7 @@ export const BrainAndAleanaWorkspace: React.FC<BrainAndAleanaWorkspaceProps> = (
   state,
   toolsRegistry,
   onSendQuery,
+  onVerifyGemini,
   onExecuteTool,
   onUpdatePreferences,
   onExecuteWorkflow,
@@ -54,6 +65,23 @@ export const BrainAndAleanaWorkspace: React.FC<BrainAndAleanaWorkspaceProps> = (
     state.preferences.languagePreference
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isVerifyingGemini, setIsVerifyingGemini] = useState(false);
+  const [runningToolName, setRunningToolName] = useState<string | null>(null);
+  const [executingWorkflowId, setExecutingWorkflowId] = useState<string | null>(null);
+  const [isManagingMemory, setIsManagingMemory] = useState<boolean>(false);
+  const [requestError, setRequestError] = useState<string | null>(null);
+  const [governanceFeedback, setGovernanceFeedback] = useState<{
+    type: 'success' | 'error';
+    message: string;
+  } | null>(null);
+
+  useEffect(() => {
+    setSelectedLang(state.preferences.languagePreference);
+  }, [state.preferences.languagePreference]);
+  const [lastSubmittedQuery, setLastSubmittedQuery] = useState<{
+    q: string;
+    modality: 'TEXT' | 'VOICE_ALEANA';
+  } | null>(null);
   const [toolFilter, setToolFilter] = useState<
     'ALL' | BrainToolDefinition['category']
   >('ALL');
@@ -68,6 +96,18 @@ export const BrainAndAleanaWorkspace: React.FC<BrainAndAleanaWorkspaceProps> = (
     if (typeof window === 'undefined') return false;
     return 'speechSynthesis' in window;
   });
+  const [aleanaSubsystemStatus, setAleanaSubsystemStatus] =
+    useState<AleanaSubsystemStatus>(() => {
+      if (typeof window !== 'undefined') {
+        const hasRec = Boolean(
+          (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+        );
+        return hasRec
+          ? 'SPEECH RECOGNITION AVAILABLE'
+          : 'SPEECH RECOGNITION UNSUPPORTED';
+      }
+      return 'TEXT READY';
+    });
   const [voiceStatusText, setVoiceStatusText] = useState<string>(() => {
     if (typeof window !== 'undefined') {
       const hasRec = Boolean(
@@ -85,10 +125,13 @@ export const BrainAndAleanaWorkspace: React.FC<BrainAndAleanaWorkspaceProps> = (
     .reverse()
     .find((m) => m.role === 'assistant');
 
+  const brainDiag = state.brainAiDiagnostics;
+
   // Speak response with Web Speech Synthesis when enabled
   const speakText = (text: string, lang: 'en' | 'hi' | 'hinglish') => {
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
-      setVoiceStatusText('Speech synthesis unsupported in current browser.');
+      setAleanaSubsystemStatus('SPEECH SYNTHESIS ERROR');
+      setVoiceStatusText('Speech synthesis unsupported in current browser · Text display active.');
       return;
     }
     try {
@@ -107,10 +150,12 @@ export const BrainAndAleanaWorkspace: React.FC<BrainAndAleanaWorkspaceProps> = (
       };
       utterance.onerror = () => {
         setVoiceStage('IDLE');
+        setAleanaSubsystemStatus('SPEECH SYNTHESIS ERROR');
       };
       window.speechSynthesis.speak(utterance);
     } catch {
       setVoiceStage('IDLE');
+      setAleanaSubsystemStatus('SPEECH SYNTHESIS ERROR');
     }
   };
 
@@ -124,6 +169,7 @@ export const BrainAndAleanaWorkspace: React.FC<BrainAndAleanaWorkspaceProps> = (
       } catch {
         // ignore
       }
+      recognitionRef.current = null;
     }
     setVoiceStage('INTERRUPTED');
     setVoiceStatusText('Barge-in interruption handled: Speech output halted immediately.');
@@ -141,32 +187,54 @@ export const BrainAndAleanaWorkspace: React.FC<BrainAndAleanaWorkspaceProps> = (
     }
 
     setIsSubmitting(true);
+    setRequestError(null);
+    setLastSubmittedQuery({ q: trimmed, modality });
     setVoiceStage('PROCESSING');
     setVoiceStatusText('Vanta Brain 9-Layer Pipeline & Tool Orchestration running...');
 
     try {
       const responseMsg = await onSendQuery(trimmed, modality, selectedLang);
       setQueryInput('');
-      if (responseMsg && state.preferences.autoSpeakResponses && modality === 'VOICE_ALEANA') {
+      if (responseMsg && state.preferences.autoSpeakResponses) {
         speakText(responseMsg.directAnswer || responseMsg.content, responseMsg.language);
       } else {
         setVoiceStage('IDLE');
         setVoiceStatusText('Response grounded in verified operational data.');
       }
+    } catch (err) {
+      const msg =
+        err instanceof Error ? err.message : 'Failed to execute Vanta Brain query.';
+      setRequestError(msg);
+      setVoiceStage('ERROR');
+      setVoiceStatusText(`Brain request error: ${msg}`);
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const startVoiceCapture = () => {
+    // Section 6.2: Prevent duplicate microphone sessions
+    if (voiceStage === 'LISTENING') {
+      return;
+    }
     if (voiceStage === 'SPEAKING') {
       handleBargeInInterrupt();
     }
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch {
+        // ignore
+      }
+      recognitionRef.current = null;
+    }
+
     const SpeechRec =
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
     if (!SpeechRec) {
       setVoiceStage('ERROR');
+      setAleanaSubsystemStatus('SPEECH RECOGNITION UNSUPPORTED');
       setVoiceStatusText(
         'Voice capability unsupported in current browser (Web Speech Recognition API unavailable). Please use the text input or preset query buttons below.'
       );
@@ -182,18 +250,25 @@ export const BrainAndAleanaWorkspace: React.FC<BrainAndAleanaWorkspaceProps> = (
 
       rec.onstart = () => {
         setVoiceStage('LISTENING');
+        setAleanaSubsystemStatus('SPEECH RECOGNITION AVAILABLE');
         setVoiceStatusText(`Listening via Microphone (${rec.lang})... Speak now`);
       };
       rec.onresult = (event: any) => {
         const transcript = event.results?.[0]?.[0]?.transcript || '';
         if (transcript) {
-          handleSubmitQuery(transcript, 'VOICE_ALEANA');
+          void handleSubmitQuery(transcript, 'VOICE_ALEANA');
         }
       };
+      rec.onend = () => {
+        recognitionRef.current = null;
+        setVoiceStage((prev) => (prev === 'LISTENING' ? 'IDLE' : prev));
+      };
       rec.onerror = (err: any) => {
+        recognitionRef.current = null;
         setVoiceStage('ERROR');
         const errCode = err?.error || 'unavailable';
         if (errCode === 'not-allowed' || errCode === 'service-not-allowed') {
+          setAleanaSubsystemStatus('MICROPHONE DENIED');
           setVoiceStatusText(
             'Voice permission denied by browser/user · Grant microphone permission or use text fallback below.'
           );
@@ -205,6 +280,7 @@ export const BrainAndAleanaWorkspace: React.FC<BrainAndAleanaWorkspaceProps> = (
       };
       rec.start();
     } catch {
+      recognitionRef.current = null;
       setVoiceStage('ERROR');
       setVoiceStatusText('Failed to start browser SpeechRecognition · Text fallback active.');
     }
@@ -214,6 +290,14 @@ export const BrainAndAleanaWorkspace: React.FC<BrainAndAleanaWorkspaceProps> = (
     return () => {
       if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
         window.speechSynthesis.cancel();
+      }
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch {
+          // ignore
+        }
+        recognitionRef.current = null;
       }
     };
   }, []);
@@ -229,7 +313,7 @@ export const BrainAndAleanaWorkspace: React.FC<BrainAndAleanaWorkspaceProps> = (
       <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-4">
         <div>
           <h2 className="text-xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">
-            Vanta Brain & ALEANA Voice Intelligence
+            Vanta Brain & ALEANA Voice Intelligence (V16.0)
           </h2>
           <p className="text-sm text-slate-600 dark:text-slate-400 mt-0.5">
             Coordinated 9-Layer Reasoning Engine · 25 Permission-Controlled Tools · Shared Bilingual Context (English / हिन्दी / Hinglish)
@@ -292,6 +376,111 @@ export const BrainAndAleanaWorkspace: React.FC<BrainAndAleanaWorkspaceProps> = (
         </div>
       </div>
 
+      {/* Section 4, 5 & 7: Truthful Vanta Brain & Gemini AI Subsystem Diagnostics Banner */}
+      <div
+        data-testid="brain-ai-diagnostics-banner"
+        className="border border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-900 p-4 space-y-2.5 text-xs font-mono tabular-nums"
+      >
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
+              BRAIN PIPELINE: LOCAL PIPELINE READY (9 Layers · 25 Tools)
+            </span>
+            <span>·</span>
+            <span
+              data-testid="gemini-connection-status"
+              className={
+                brainDiag?.status === 'GEMINI CONNECTED'
+                  ? 'text-emerald-600 dark:text-emerald-400 font-semibold'
+                  : brainDiag?.status === 'GEMINI UNAVAILABLE'
+                  ? 'text-amber-600 dark:text-amber-400 font-semibold'
+                  : 'text-rose-600 dark:text-rose-400 font-semibold'
+              }
+            >
+              GEMINI STATUS: {brainDiag?.status || 'GEMINI UNAVAILABLE'}
+            </span>
+            <span>·</span>
+            <span className="text-slate-600 dark:text-slate-300">
+              ACTIVE ENGINE:{' '}
+              <strong>
+                {brainDiag?.usingFallback !== false
+                  ? `${brainDiag?.fallbackModelName || 'vanta-brain-9layer-v16-fallback'} (Deterministic Local)`
+                  : `${brainDiag?.modelName || 'gemini-4-hydrogen'} (Live Cloud AI)`}
+              </strong>
+            </span>
+          </div>
+
+          <button
+            type="button"
+            data-testid="verify-gemini-btn"
+            disabled={isVerifyingGemini}
+            onClick={async () => {
+              if (!onVerifyGemini) return;
+              setIsVerifyingGemini(true);
+              try {
+                await onVerifyGemini();
+              } finally {
+                setIsVerifyingGemini(false);
+              }
+            }}
+            className="px-3 py-1 rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-sky-300 hover:bg-slate-100 dark:hover:bg-slate-700 font-semibold transition-colors whitespace-nowrap shrink-0"
+          >
+            <RefreshCw
+              className={`w-3 h-3 inline mr-1.5 ${
+                isVerifyingGemini ? 'animate-spin' : ''
+              }`}
+            />
+            {isVerifyingGemini ? 'Probing Gemini...' : 'Verify Gemini Connection'}
+          </button>
+        </div>
+
+        {brainDiag?.lastErrorMessage && (
+          <div className="p-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-200 font-sans flex items-start gap-2">
+            <ShieldAlert className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+            <div>
+              <span className="font-mono font-semibold">
+                [{brainDiag.lastErrorCategory || 'DIAGNOSTIC'}]:
+              </span>{' '}
+              {brainDiag.lastErrorMessage}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Request Error Banner with Retry */}
+      {requestError && (
+        <div
+          role="alert"
+          data-testid="brain-request-error-banner"
+          className="p-3.5 rounded-xl border border-rose-500/40 bg-rose-500/10 text-xs text-rose-700 dark:text-rose-200 flex flex-wrap items-center justify-between gap-3"
+        >
+          <span>Brain Query Error: {requestError}</span>
+          <div className="flex items-center gap-2">
+            {lastSubmittedQuery && (
+              <button
+                type="button"
+                onClick={() =>
+                  void handleSubmitQuery(
+                    lastSubmittedQuery.q,
+                    lastSubmittedQuery.modality
+                  )
+                }
+                className="px-2.5 py-1 rounded bg-rose-600 text-white font-semibold hover:bg-rose-500"
+              >
+                Retry Query
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setRequestError(null)}
+              className="underline"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ALEANA Voice HUD Bar */}
       <div className="border border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-900 p-4 flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-4">
@@ -316,7 +505,11 @@ export const BrainAndAleanaWorkspace: React.FC<BrainAndAleanaWorkspaceProps> = (
 
           <div>
             <div className="flex flex-wrap items-center gap-2 text-xs font-mono text-slate-500 dark:text-slate-400">
-              <span>ALEANA VOICE STATE: {voiceStage}</span>
+              <span data-testid="aleana-subsystem-status">
+                ALEANA STATUS: {aleanaSubsystemStatus}
+              </span>
+              <span>·</span>
+              <span>VOICE STAGE: {voiceStage}</span>
               <span>·</span>
               <span>
                 STT: {speechRecognitionSupported ? 'AVAILABLE' : 'UNSUPPORTED (TEXT FALLBACK)'}
@@ -728,14 +921,33 @@ export const BrainAndAleanaWorkspace: React.FC<BrainAndAleanaWorkspaceProps> = (
                   </span>
                   <button
                     type="button"
-                    onClick={() => onExecuteTool(tool.name, {})}
-                    className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0 ${
+                    disabled={runningToolName === tool.name}
+                    onClick={async () => {
+                      if (runningToolName) return;
+                      setRunningToolName(tool.name);
+                      setGovernanceFeedback(null);
+                      try {
+                        const res = await onExecuteTool(tool.name, {});
+                        if (res && res.error) {
+                          setGovernanceFeedback({ type: 'error', message: res.error });
+                        } else if (res && res.message) {
+                          setGovernanceFeedback({ type: 'success', message: res.message });
+                        }
+                      } finally {
+                        setRunningToolName(null);
+                      }
+                    }}
+                    className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0 disabled:opacity-50 ${
                       permitted
                         ? 'bg-slate-900 text-white dark:bg-slate-800 dark:text-sky-300 hover:opacity-90'
                         : 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/30'
                     }`}
                   >
-                    {permitted ? 'Run Tool' : 'Test RBAC Deny'}
+                    {runningToolName === tool.name
+                      ? 'Running...'
+                      : permitted
+                      ? 'Run Tool'
+                      : 'Test RBAC Deny'}
                   </button>
                 </div>
               </div>
@@ -743,6 +955,20 @@ export const BrainAndAleanaWorkspace: React.FC<BrainAndAleanaWorkspaceProps> = (
           })}
         </div>
       </div>
+
+      {governanceFeedback && (
+        <div
+          role="status"
+          data-testid="brain-governance-feedback"
+          className={`p-3 rounded-xl border text-xs font-medium ${
+            governanceFeedback.type === 'error'
+              ? 'border-rose-500/40 bg-rose-500/10 text-rose-700 dark:text-rose-300'
+              : 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+          }`}
+        >
+          {governanceFeedback.message}
+        </div>
+      )}
 
       {/* V14.0 Autonomous Workflow Engine & Conversation Memory Governance (Sections 9 & 12) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
@@ -812,18 +1038,62 @@ export const BrainAndAleanaWorkspace: React.FC<BrainAndAleanaWorkspaceProps> = (
                     {isAwaiting ? (
                       <button
                         type="button"
-                        onClick={() => onExecuteWorkflow?.(wf.id, true)}
-                        className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 transition-colors whitespace-nowrap shrink-0"
+                        disabled={executingWorkflowId === wf.id}
+                        onClick={async () => {
+                          if (executingWorkflowId) return;
+                          setExecutingWorkflowId(wf.id);
+                          setGovernanceFeedback(null);
+                          try {
+                            const res = await onExecuteWorkflow?.(wf.id, true);
+                            if (res && res.error) {
+                              setGovernanceFeedback({ type: 'error', message: res.error });
+                            } else {
+                              setGovernanceFeedback({
+                                type: 'success',
+                                message:
+                                  res?.message ||
+                                  `Workflow ${wf.id} approved and executed.`,
+                              });
+                            }
+                          } finally {
+                            setExecutingWorkflowId(null);
+                          }
+                        }}
+                        className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 transition-colors whitespace-nowrap shrink-0"
                       >
-                        Approve & Execute
+                        {executingWorkflowId === wf.id
+                          ? 'Approving...'
+                          : 'Approve & Execute'}
                       </button>
                     ) : (
                       <button
                         type="button"
-                        onClick={() => onExecuteWorkflow?.(wf.id, false)}
-                        className="px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-900 text-white dark:bg-slate-800 dark:text-sky-300 hover:opacity-90 transition-opacity whitespace-nowrap shrink-0"
+                        disabled={executingWorkflowId === wf.id}
+                        onClick={async () => {
+                          if (executingWorkflowId) return;
+                          setExecutingWorkflowId(wf.id);
+                          setGovernanceFeedback(null);
+                          try {
+                            const res = await onExecuteWorkflow?.(wf.id, false);
+                            if (res && res.error) {
+                              setGovernanceFeedback({ type: 'error', message: res.error });
+                            } else {
+                              setGovernanceFeedback({
+                                type: 'success',
+                                message:
+                                  res?.message ||
+                                  `Workflow ${wf.id} execution triggered.`,
+                              });
+                            }
+                          } finally {
+                            setExecutingWorkflowId(null);
+                          }
+                        }}
+                        className="px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-900 text-white dark:bg-slate-800 dark:text-sky-300 hover:opacity-90 disabled:opacity-50 transition-opacity whitespace-nowrap shrink-0"
                       >
-                        Execute Workflow
+                        {executingWorkflowId === wf.id
+                          ? 'Executing...'
+                          : 'Execute Workflow'}
                       </button>
                     )}
                   </div>
@@ -878,8 +1148,26 @@ export const BrainAndAleanaWorkspace: React.FC<BrainAndAleanaWorkspaceProps> = (
                       <button
                         key={days}
                         type="button"
-                        onClick={() => onManageMemory?.('UPDATE_RETENTION', days)}
-                        className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
+                        disabled={isManagingMemory}
+                        onClick={async () => {
+                          if (isManagingMemory) return;
+                          setIsManagingMemory(true);
+                          setGovernanceFeedback(null);
+                          try {
+                            const res = await onManageMemory?.('UPDATE_RETENTION', days);
+                            if (res && res.error) {
+                              setGovernanceFeedback({ type: 'error', message: res.error });
+                            } else {
+                              setGovernanceFeedback({
+                                type: 'success',
+                                message: `Retention policy updated to ${days} days and audited.`,
+                              });
+                            }
+                          } finally {
+                            setIsManagingMemory(false);
+                          }
+                        }}
+                        className={`px-2.5 py-1 rounded text-xs font-medium transition-colors disabled:opacity-50 ${
                           state.memoryGovernance?.retentionPeriodDays === days
                             ? 'bg-sky-600 text-white'
                             : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
@@ -897,10 +1185,31 @@ export const BrainAndAleanaWorkspace: React.FC<BrainAndAleanaWorkspaceProps> = (
           <div className="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-2">
             <button
               type="button"
-              onClick={() => onManageMemory?.('RESET_CONVERSATION')}
-              className="w-full px-3.5 py-2 text-xs font-semibold rounded-lg border border-rose-500/40 text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 transition-colors"
+              disabled={isManagingMemory}
+              onClick={async () => {
+                if (isManagingMemory) return;
+                setIsManagingMemory(true);
+                setGovernanceFeedback(null);
+                try {
+                  const res = await onManageMemory?.('RESET_CONVERSATION');
+                  if (res && res.error) {
+                    setGovernanceFeedback({ type: 'error', message: res.error });
+                  } else {
+                    setGovernanceFeedback({
+                      type: 'success',
+                      message:
+                        'Conversation context reset to genesis while preserving SHA-256 audit ledger.',
+                    });
+                  }
+                } finally {
+                  setIsManagingMemory(false);
+                }
+              }}
+              className="w-full px-3.5 py-2 text-xs font-semibold rounded-lg border border-rose-500/40 text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 disabled:opacity-50 transition-colors"
             >
-              Reset Conversation Memory (Preserve Audit Ledger)
+              {isManagingMemory
+                ? 'Updating Memory Governance...'
+                : 'Reset Conversation Memory (Preserve Audit Ledger)'}
             </button>
           </div>
         </div>

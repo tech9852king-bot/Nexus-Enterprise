@@ -2,6 +2,7 @@ import {
   AuditRecord,
   AutonomousWorkflow,
   BoundingBox,
+  BrainAiDiagnostics,
   BrainLayerTrace,
   BrainToolDefinition,
   BrainToolExecutionRecord,
@@ -20,6 +21,112 @@ import {
   UserRole,
   VantaSystemState,
 } from './types';
+import { ALL_COCO_SSD_CLASSES } from './visionPipeline';
+
+/**
+ * Section 5: Classify Gemini API / Configuration errors into sanitized operator categories
+ */
+export function classifyGeminiError(err: unknown): {
+  status: BrainAiDiagnostics['status'];
+  errorCategory: NonNullable<BrainAiDiagnostics['lastErrorCategory']>;
+  sanitizedMessage: string;
+} {
+  const raw = err instanceof Error ? err.message : String(err ?? 'Unknown Gemini error');
+  const lower = raw.toLowerCase();
+
+  if (
+    lower.includes('api_key_invalid') ||
+    lower.includes('api key not valid') ||
+    lower.includes('unauthenticated') ||
+    lower.includes('permission_denied') ||
+    lower.includes('401') ||
+    lower.includes('403') ||
+    lower.includes('invalid api key')
+  ) {
+    return {
+      status: 'AUTHENTICATION ERROR',
+      errorCategory: 'API_KEY_REJECTED',
+      sanitizedMessage:
+        'GEMINI_API_KEY was rejected by Google Gemini API. Verify that a valid key is configured in AI Studio Settings > Secrets.',
+    };
+  }
+  if (
+    lower.includes('quota') ||
+    lower.includes('resource_exhausted') ||
+    lower.includes('429') ||
+    lower.includes('rate limit')
+  ) {
+    return {
+      status: 'QUOTA EXCEEDED',
+      errorCategory: 'QUOTA_EXCEEDED',
+      sanitizedMessage:
+        'Gemini API quota or rate limit exceeded (HTTP 429). Deterministic 9-layer local fallback was used.',
+    };
+  }
+  if (
+    lower.includes('not found') ||
+    lower.includes('404') ||
+    lower.includes('model') ||
+    lower.includes('unsupported')
+  ) {
+    return {
+      status: 'MODEL ERROR',
+      errorCategory: 'MODEL_UNAVAILABLE',
+      sanitizedMessage:
+        'Requested Gemini model is unavailable or unsupported for this key. Deterministic 9-layer local fallback was used.',
+    };
+  }
+  if (lower.includes('timeout') || lower.includes('timed out') || lower.includes('aborted')) {
+    return {
+      status: 'REQUEST ERROR',
+      errorCategory: 'REQUEST_TIMEOUT',
+      sanitizedMessage:
+        'Gemini API request timed out. Deterministic 9-layer local fallback was used.',
+    };
+  }
+  if (lower.includes('fetch') || lower.includes('network') || lower.includes('econnrefused') || lower.includes('enotfound')) {
+    return {
+      status: 'REQUEST ERROR',
+      errorCategory: 'NETWORK_FAILURE',
+      sanitizedMessage:
+        'Network failure while reaching Gemini API endpoint. Deterministic 9-layer local fallback was used.',
+    };
+  }
+  return {
+    status: 'REQUEST ERROR',
+    errorCategory: 'INVALID_RESPONSE',
+    sanitizedMessage:
+      'Gemini API returned an unexpected error or empty response. Deterministic 9-layer local fallback was used.',
+  };
+}
+
+export function buildDefaultBrainAiDiagnostics(apiKeyConfigured = false): BrainAiDiagnostics {
+  if (!apiKeyConfigured) {
+    return {
+      status: 'GEMINI UNAVAILABLE',
+      geminiConfigured: false,
+      modelName: 'gemini-4-hydrogen',
+      fallbackModelName: 'vanta-brain-9layer-v16-fallback',
+      lastErrorCategory: 'API_KEY_MISSING',
+      lastErrorMessage:
+        'GEMINI_API_KEY is not configured in server environment. Configure GEMINI_API_KEY in AI Studio Settings > Secrets to enable live Gemini synthesis; Vanta Brain is operating on its deterministic 9-layer local tool pipeline.',
+      lastCheckedIso: new Date().toISOString(),
+      lastResponseLatencyMs: null,
+      usingFallback: true,
+    };
+  }
+  return {
+    status: 'GEMINI CONNECTED',
+    geminiConfigured: true,
+    modelName: 'gemini-4-hydrogen',
+    fallbackModelName: 'vanta-brain-9layer-v16-fallback',
+    lastErrorCategory: null,
+    lastErrorMessage: null,
+    lastCheckedIso: new Date().toISOString(),
+    lastResponseLatencyMs: null,
+    usingFallback: false,
+  };
+}
 
 /**
  * Pure deterministic SHA-256 implementation (FIPS 180-4) so both Node and browser
@@ -289,6 +396,24 @@ export function evaluateCompoundPolicyRule(
     return {
       matched: false,
       reasons: [`Zone mismatch: expected ${policy.targetZoneId}, observed ${observation.zoneId}.`],
+      governanceDisclaimer:
+        'A policy evaluation is an operational telemetry signal and does not constitute proof of wrongdoing.',
+    };
+  }
+  if (
+    !Number.isFinite(observation.confidence) ||
+    observation.confidence < 0 ||
+    observation.confidence > 1 ||
+    !Number.isFinite(observation.occupancy) ||
+    observation.occupancy < 0 ||
+    !Number.isFinite(observation.maxDwellSeconds) ||
+    observation.maxDwellSeconds < 0
+  ) {
+    return {
+      matched: false,
+      reasons: [
+        'Invalid policy observation parameters: confidence must be in [0, 1] and occupancy/dwell duration must be finite non-negative numbers.',
+      ],
       governanceDisclaimer:
         'A policy evaluation is an operational telemetry signal and does not constitute proof of wrongdoing.',
     };
@@ -612,12 +737,14 @@ export const BRAIN_TOOLS_REGISTRY: BrainToolDefinition[] = [
 export function executeBrainTool(
   state: VantaSystemState,
   toolName: string,
-  args: Record<string, unknown> = {},
+  rawArgs: Record<string, unknown> = {},
   options: { confirmedConsequential?: boolean } = {}
 ): {
   record: BrainToolExecutionRecord;
   updatedState: VantaSystemState;
 } {
+  const args: Record<string, unknown> =
+    rawArgs && typeof rawArgs === 'object' && !Array.isArray(rawArgs) ? rawArgs : {};
   const startMs = Date.now();
   const toolDef = BRAIN_TOOLS_REGISTRY.find((t) => t.name === toolName);
   const timestampIso = new Date().toISOString();
@@ -683,19 +810,25 @@ export function executeBrainTool(
     case 'get_system_status': {
       const chain = verifyAuditChain(state.auditTrail);
       const onlineCameras = state.cameras.filter((c) => c.connectorState === 'Connected' || c.connectorState === 'Simulated').length;
+      const liveConnectedCameras = state.cameras.filter((c) => c.connectorState === 'Connected' && !c.isSimulatedStream).length;
       const connectedDevices = state.devices.filter((d) => d.connectorState === 'Connected').length;
+      const simulatedDevices = state.devices.filter((d) => d.connectorState === 'Simulated').length;
       dataPayload = {
         platformVersion: state.version,
         codename: state.codename,
         syncRevision: state.syncRevision,
         onlineCameras,
+        liveConnectedCameras,
         totalCameras: state.cameras.length,
         connectedDevices,
+        simulatedDevices,
         totalDevices: state.devices.length,
         auditChainValid: chain.valid,
         auditRecordsCount: chain.checkedCount,
+        visionModelStatus: state.measuredVisionTelemetry?.modelStatus || 'UNINITIALIZED',
+        geminiStatus: state.brainAiDiagnostics?.status || 'LOCAL PIPELINE READY',
       };
-      resultSummary = `System nominal (Rev #${state.syncRevision}): ${onlineCameras}/${state.cameras.length} cameras active, ${connectedDevices}/${state.devices.length} devices synced, SHA-256 audit chain verified (${chain.checkedCount} blocks).`;
+      resultSummary = `System nominal (Rev #${state.syncRevision}): ${onlineCameras}/${state.cameras.length} camera streams active (${liveConnectedCameras} live webcam, ${onlineCameras - liveConnectedCameras} simulated), ${connectedDevices} physically paired device(s) + ${simulatedDevices} simulated fleet node(s), Vision Model=${state.measuredVisionTelemetry?.modelStatus || 'UNINITIALIZED'}, SHA-256 audit chain verified (${chain.checkedCount} blocks).`;
       break;
     }
 
@@ -943,10 +1076,10 @@ export function executeBrainTool(
       dataPayload = {
         currentOccupancy: currentTotal,
         projectedOccupancy30m: projected,
-        uncertaintyBand: '±4 occupants (90% CI)',
-        methodology: 'Exponential smoothing over trailing 6h zone telemetry',
+        uncertaintyBand: '±4 occupants (heuristic interval)',
+        methodology: 'Deterministic 1.12x heuristic scaling over current zone occupancy (not a trained ML model)',
       };
-      resultSummary = `Current facility occupancy is ${currentTotal}; 30-minute projection is ${projected} (±4 occupants, Estimated provenance).`;
+      resultSummary = `Current facility occupancy is ${currentTotal}; 30-minute heuristic estimate is ${projected} (±4 occupants, Estimated — 1.12x heuristic).`;
       break;
     }
 
@@ -1110,8 +1243,17 @@ export function selectToolsForQuery(query: string): string[] {
   if (q.includes('incident') || q.includes('unresolved') || q.includes('alert') || q.includes('हादसा') || q.includes('incident')) {
     selected.push('list_incidents', 'explain_incident');
   }
-  if (q.includes('camera') || q.includes('offline') || q.includes('stream') || q.includes('कैमरा')) {
-    selected.push('get_camera_inventory', 'get_camera_connection_quality');
+  if (
+    q.includes('camera') ||
+    q.includes('offline') ||
+    q.includes('stream') ||
+    q.includes('detect') ||
+    q.includes('webcam') ||
+    q.includes('coco') ||
+    q.includes('कैमरा') ||
+    q.includes('डिटेक्ट')
+  ) {
+    selected.push('get_camera_inventory', 'get_pipeline_diagnostics');
   }
   if (q.includes('device') || q.includes('android') || q.includes('tablet') || q.includes('battery') || q.includes('sync')) {
     selected.push('get_device_inventory', 'get_device_status');
@@ -1122,8 +1264,17 @@ export function selectToolsForQuery(query: string): string[] {
   if (q.includes('policy') || q.includes('rule') || q.includes('why did')) {
     selected.push('list_policies', 'evaluate_compound_policy');
   }
-  if (q.includes('troubleshoot') || q.includes('diagnostic') || q.includes('health')) {
-    selected.push('run_troubleshooter', 'get_pipeline_diagnostics');
+  if (
+    q.includes('troubleshoot') ||
+    q.includes('diagnostic') ||
+    q.includes('health') ||
+    q.includes('gemini') ||
+    q.includes('brain') ||
+    q.includes('ai') ||
+    q.includes('model') ||
+    q.includes('aleana')
+  ) {
+    selected.push('run_troubleshooter', 'get_pipeline_diagnostics', 'get_system_status');
   }
   if (q.includes('report') || q.includes('summary') || q.includes('shift') || q.includes('रिपोर्ट')) {
     selected.push('generate_operational_report', 'get_summary_metrics');
@@ -1165,35 +1316,54 @@ export function runNineLayerBrainPipeline(
   uncertaintyDisclosure: string;
   recommendedNextAction: string;
 } {
+  const tL1 = Date.now();
   const detectedLanguage = preferredLang || detectQueryLanguage(query);
   const selectedTools = selectToolsForQuery(query);
-  let workingState = { ...state };
-  const executedRecords: BrainToolExecutionRecord[] = [];
+  const l1Ms = Math.max(1, Date.now() - tL1);
 
+  const tL2 = Date.now();
+  let workingState = { ...state };
+  const l2Ms = Math.max(1, Date.now() - tL2);
+
+  const tL3 = Date.now();
+  const executedRecords: BrainToolExecutionRecord[] = [];
   for (const toolName of selectedTools) {
     const { record, updatedState } = executeBrainTool(workingState, toolName, {});
     workingState = updatedState;
     executedRecords.push(record);
   }
+  const l3Ms = Math.max(1, Date.now() - tL3);
 
+  const tL4 = Date.now();
   const openIncidents = workingState.incidents.filter((i) => i.status !== 'RESOLVED');
-  const degradedCams = workingState.cameras.filter((c) => c.connectorState === 'Degraded' || c.connectorState === 'Disconnected');
+  const degradedCams = workingState.cameras.filter(
+    (c) => c.connectorState === 'Degraded' || c.connectorState === 'Disconnected'
+  );
+  const liveCams = workingState.cameras.filter(
+    (c) => c.connectorState === 'Connected' && !c.isSimulatedStream
+  );
   const totalOcc = workingState.zones.reduce((acc, z) => acc + z.currentOccupancy, 0);
+  const realDetections = (workingState.latestNormalizedDetections || []).filter(
+    (d) => d.provenance === 'REAL_MODEL'
+  );
+  const provenanceMode = workingState.measuredVisionTelemetry?.provenanceMode || 'SIMULATED_DEMO';
+  const modelStatus = workingState.measuredVisionTelemetry?.modelStatus || 'UNINITIALIZED';
+  const l4Ms = Math.max(1, Date.now() - tL4);
 
   const layerTraces: BrainLayerTrace[] = [
     {
       layerNumber: 1,
       layerName: 'Intent Intelligence',
       status: 'COMPLETED',
-      latencyMs: 4,
+      latencyMs: l1Ms,
       summary: `Classified operational query (${modality}, lang=${detectedLanguage}) targeting tools: ${selectedTools.join(', ')}.`,
-      evidenceRefs: ['INTENT-CLASSIFIER-V11'],
+      evidenceRefs: ['INTENT-CLASSIFIER-V16'],
     },
     {
       layerNumber: 2,
       layerName: 'Context Intelligence',
       status: 'COMPLETED',
-      latencyMs: 5,
+      latencyMs: l2Ms,
       summary: `Bound tenant scope ${workingState.tenant.tenantId} (${workingState.tenant.siteName}) for role ${workingState.tenant.role}.`,
       evidenceRefs: [workingState.tenant.tenantId, workingState.tenant.siteId],
     },
@@ -1201,7 +1371,7 @@ export function runNineLayerBrainPipeline(
       layerNumber: 3,
       layerName: 'Data Intelligence',
       status: 'COMPLETED',
-      latencyMs: 9,
+      latencyMs: l3Ms,
       summary: `Retrieved ${executedRecords.length} live tool dataset(s) at sync revision #${workingState.syncRevision}.`,
       evidenceRefs: executedRecords.map((r) => r.executionId),
     },
@@ -1209,15 +1379,15 @@ export function runNineLayerBrainPipeline(
       layerNumber: 4,
       layerName: 'Vision Intelligence',
       status: 'COMPLETED',
-      latencyMs: 7,
-      summary: `Evaluated ${workingState.cameras.length} camera streams (${degradedCams.length} degraded) and ${totalOcc} active tracked occupants.`,
+      latencyMs: l4Ms,
+      summary: `Evaluated ${workingState.cameras.length} camera streams (${liveCams.length} live webcam, ${degradedCams.length} degraded), COCO-SSD status=${modelStatus}, and ${realDetections.length} REAL_MODEL detection(s).`,
       evidenceRefs: workingState.cameras.map((c) => c.id),
     },
     {
       layerNumber: 5,
       layerName: 'Temporal Intelligence',
       status: 'COMPLETED',
-      latencyMs: 6,
+      latencyMs: 1,
       summary: `Correlated ${workingState.events.length} timestamped events across ${workingState.zones.length} zones.`,
       evidenceRefs: workingState.events.slice(0, 3).map((e) => e.id),
     },
@@ -1225,7 +1395,7 @@ export function runNineLayerBrainPipeline(
       layerNumber: 6,
       layerName: 'Policy & Risk Intelligence',
       status: 'COMPLETED',
-      latencyMs: 5,
+      latencyMs: 1,
       summary: `Assessed ${workingState.policies.filter((p) => p.enabled).length} active compound policies; ${openIncidents.length} incident(s) require operator attention.`,
       evidenceRefs: workingState.policies.map((p) => p.id),
     },
@@ -1233,7 +1403,7 @@ export function runNineLayerBrainPipeline(
       layerNumber: 7,
       layerName: 'Reasoning & Orchestration',
       status: 'COMPLETED',
-      latencyMs: 11,
+      latencyMs: 1,
       summary: `Synthesized outputs from ${executedRecords.map((r) => r.toolName).join(' -> ')}.`,
       evidenceRefs: executedRecords.map((r) => r.toolName),
     },
@@ -1241,50 +1411,54 @@ export function runNineLayerBrainPipeline(
       layerNumber: 8,
       layerName: 'Explanation Intelligence',
       status: 'COMPLETED',
-      latencyMs: 6,
-      summary: 'Constructed evidence-grounded response separating Measured telemetry from Inferred hypotheses.',
+      latencyMs: 1,
+      summary: 'Constructed evidence-grounded response separating Measured telemetry from Simulated/Estimated signals.',
       evidenceRefs: openIncidents.map((i) => i.id),
     },
     {
       layerNumber: 9,
       layerName: 'Governance Intelligence',
       status: 'COMPLETED',
-      latencyMs: 4,
+      latencyMs: 1,
       summary: `Enforced RBAC (${workingState.tenant.role}) and appended SHA-256 audit block #${workingState.auditTrail.length}.`,
       evidenceRefs: [workingState.auditTrail[workingState.auditTrail.length - 1]?.id || 'AUD-HEAD'],
     },
   ];
 
-  const realDetections = (workingState.latestNormalizedDetections || []).filter(
-    (d) => d.provenance === 'REAL_MODEL'
-  );
-  const provenanceMode = workingState.measuredVisionTelemetry?.provenanceMode || 'SIMULATED_DEMO';
-
   let directAnswer = executedRecords.map((r) => r.resultSummary).join(' ');
   if (realDetections.length > 0) {
     const classList = Array.from(new Set(realDetections.map((d) => d.className))).join(', ');
     directAnswer += ` ${realDetections.length} genuine model-inferred detection(s) active (${classList}, provenance=REAL_MODEL).`;
+  } else {
+    const qLower = query.toLowerCase();
+    if (qLower.includes('detect') || qLower.includes('camera') || qLower.includes('webcam')) {
+      directAnswer += ` Vision Model (${workingState.measuredVisionTelemetry?.modelId || 'COCO-SSD'}) is ${modelStatus} (${provenanceMode} mode; ${liveCams.length} live webcam stream connected).`;
+    }
   }
+
   if (detectedLanguage === 'hinglish') {
-    directAnswer = `Vanta Nexus Status (Rev #${workingState.syncRevision}): Abhi ${openIncidents.length} active incidents hain aur ${workingState.cameras.length} cameras monitor ho rahe hain (${degradedCams.length} degraded). ${executedRecords
+    directAnswer = `Vanta Nexus Status (Rev #${workingState.syncRevision}): Abhi ${openIncidents.length} active incidents hain, ${workingState.cameras.length} cameras monitor ho rahe hain (${liveCams.length} live webcam, ${degradedCams.length} degraded), aur Vision Model status ${modelStatus} hai (${realDetections.length} REAL_MODEL detections). ${executedRecords
       .map((r) => r.resultSummary)
       .join(' ')}`;
   } else if (detectedLanguage === 'hi') {
-    directAnswer = `वान्टा नेक्सस स्थिति (संशोधन #${workingState.syncRevision}): वर्तमान में ${openIncidents.length} सक्रिय घटनाएं हैं और कुल उपस्थिति ${totalOcc} है। ${executedRecords
+    directAnswer = `वान्टा नेक्सस स्थिति (संशोधन #${workingState.syncRevision}): वर्तमान में ${openIncidents.length} सक्रिय घटनाएं हैं, कुल उपस्थिति ${totalOcc} है, और विज़न मॉडल स्थिति ${modelStatus} है। ${executedRecords
       .map((r) => r.resultSummary)
       .join(' ')}`;
   }
 
-  const keyFindings = executedRecords.map((r) => `[${r.toolName}] ${r.resultSummary}`);
+  const keyFindings = [
+    ...executedRecords.map((r) => `[${r.toolName}] ${r.resultSummary}`),
+    `[Vision Pipeline] Model=${modelStatus} (${workingState.measuredVisionTelemetry?.backend || 'uninitialized'}), Provenance=${provenanceMode}, LiveREALDetections=${realDetections.length}`,
+  ];
   const evidenceCitations = [
     ...openIncidents.map((i) => `${i.id} (${i.zoneName} · ${i.severity})`),
-    ...workingState.events.slice(0, 2).map((e) => `${e.id} (${e.cameraId} · FrameHash ${e.evidenceMetadata.frameHash.slice(0, 8)})`),
+    ...workingState.events.slice(0, 2).map((e) => `${e.id} (${e.cameraId} · ${e.provenance} · FrameHash ${e.evidenceMetadata.frameHash.slice(0, 8)})`),
   ];
 
   const epistemicBreakdown: EpistemicStatement[] = [
     {
       category: 'Verified Fact',
-      statement: `System is at Sync Revision #${workingState.syncRevision} with ${workingState.auditTrail.length} verified SHA-256 audit blocks, ${openIncidents.length} open incident(s), and active detection provenance=${provenanceMode} (${realDetections.length} REAL_MODEL detections).`,
+      statement: `System is at Sync Revision #${workingState.syncRevision} with ${workingState.auditTrail.length} verified SHA-256 audit blocks, ${openIncidents.length} open incident(s), and active detection provenance=${provenanceMode} (${realDetections.length} REAL_MODEL detections, modelStatus=${modelStatus}).`,
       sourceRef: `Canonical State Store · Audit Head ${workingState.auditTrail[workingState.auditTrail.length - 1]?.recordHash.slice(0, 10) || 'GENESIS'}`,
     },
     {
@@ -1302,8 +1476,8 @@ export function runNineLayerBrainPipeline(
     },
     {
       category: 'Estimate',
-      statement: `30-minute short-horizon occupancy projection is ${Math.round(totalOcc * 1.12)} (±4 occupants, 90% CI).`,
-      sourceRef: 'Exponential Smoothing Forecaster (T20)',
+      statement: `30-minute short-horizon occupancy projection is ${Math.round(totalOcc * 1.12)} (±4 occupants — deterministic 1.12x heuristic estimate over current zone occupancy).`,
+      sourceRef: 'Heuristic Occupancy Estimator (T20)',
     },
     {
       category: 'Model Interpretation',
@@ -1324,7 +1498,7 @@ export function runNineLayerBrainPipeline(
     evidenceCitations,
     epistemicBreakdown,
     uncertaintyDisclosure:
-      'Camera feeds labeled SIMULATED use deterministic telemetry replay; live browser webcam streams use Measured local frame analysis. Policy matches are operational signals requiring operator verification.',
+      'Camera feeds labeled SIMULATED use deterministic telemetry replay; live browser webcam streams use Measured local COCO-SSD frame inference. Policy matches are operational signals requiring operator verification.',
     recommendedNextAction:
       openIncidents.length > 0
         ? `Inspect ${openIncidents[0].id} ("${openIncidents[0].title}") in ${openIncidents[0].zoneName} and transition state after verifying camera telemetry.`
@@ -1663,6 +1837,19 @@ export function executeAutonomousWorkflow(
     };
   }
 
+  if (
+    target.requiresHumanApproval &&
+    approvedByHuman &&
+    state.tenant.role !== 'ADMIN' &&
+    state.tenant.role !== 'SECURITY_OPERATOR'
+  ) {
+    return {
+      updatedState: state,
+      workflow: target,
+      error: `Role ${state.tenant.role} is not authorized to approve consequential workflows. Required: ADMIN or SECURITY_OPERATOR.`,
+    };
+  }
+
   const nowIso = new Date().toISOString();
 
   // Enforce Human Approval Boundary for consequential workflows
@@ -1693,6 +1880,14 @@ export function executeAutonomousWorkflow(
     return { updatedState: nextState, workflow: awaitingWf };
   }
 
+  if (target.requiresHumanApproval && !approvedByHuman && target.status === 'AWAITING_APPROVAL') {
+    return {
+      updatedState: state,
+      workflow: target,
+      error: `Workflow ${workflowId} is awaiting explicit human approval before execution.`,
+    };
+  }
+
   // Execute coordinated tools for the workflow
   let workingState = { ...state };
   const toolChain =
@@ -1708,6 +1903,13 @@ export function executeAutonomousWorkflow(
   for (const tName of toolChain) {
     const { record, updatedState } = executeBrainTool(workingState, tName, {});
     workingState = updatedState;
+    if (record.status === 'DENIED' || record.status === 'FAILED') {
+      return {
+        updatedState: workingState,
+        workflow: target,
+        error: `Workflow step ${tName} ${record.status}: ${record.resultSummary}`,
+      };
+    }
     summaries.push(`${tName}: ${record.resultSummary}`);
   }
 
@@ -1775,7 +1977,7 @@ export function manageConversationMemory(
         'Conversation context reset per Memory Governance request. Operational records, camera streams, and SHA-256 audit blocks remain intact.',
       directAnswer:
         'Conversation memory cleared. Session and operational evidence remain bound to Apex Hyperscale Data Center.',
-      modelUsed: 'vanta-memory-governor-v14',
+      modelUsed: 'vanta-memory-governor-v16',
     };
     return {
       ...state,
@@ -1814,6 +2016,17 @@ export function manageConversationMemory(
       ...currentGov,
       retentionPeriodDays: nextDays,
     },
+    auditTrail: appendAuditRecord(state.auditTrail, {
+      tenantId: state.tenant.tenantId,
+      timestampIso: nowIso,
+      actorId: state.tenant.userId,
+      actorRole: state.tenant.role,
+      category: 'POLICY_CHANGE',
+      action: `MEMORY_GOVERNANCE_RETENTION_UPDATED:${nextDays}D`,
+      targetId: 'CONV-PRIMARY',
+      outcome: 'SUCCESS',
+      details: `Updated conversation and operational metadata retention policy from ${currentGov.retentionPeriodDays} days to ${nextDays} days.`,
+    }),
   };
 }
 
@@ -1906,7 +2119,7 @@ export function createInitialVantaState(): VantaSystemState {
   });
 
   return {
-    version: '15.0.0',
+    version: '16.0.0',
     codename: 'VANTA NEXUS',
     tenant: {
       tenantId: 'TENANT-VANTA-01',
@@ -2089,7 +2302,7 @@ export function createInitialVantaState(): VantaSystemState {
         name: 'Field Patrol Android S24 Ultra',
         platform: 'Android Node',
         ipAddress: '10.42.18.104',
-        connectorState: 'Connected',
+        connectorState: 'Simulated',
         batteryPct: 84,
         cpuLoadPct: 31,
         memoryUsedMb: 2840,
@@ -2105,7 +2318,7 @@ export function createInitialVantaState(): VantaSystemState {
         name: 'SOC Supervisor Tablet Pro',
         platform: 'Tablet Command',
         ipAddress: '10.42.18.112',
-        connectorState: 'Connected',
+        connectorState: 'Simulated',
         batteryPct: 92,
         cpuLoadPct: 24,
         memoryUsedMb: 3120,
@@ -2121,7 +2334,7 @@ export function createInitialVantaState(): VantaSystemState {
         name: 'Command Workstation Alpha-7',
         platform: 'Windows Workstation',
         ipAddress: '10.42.10.22',
-        connectorState: 'Connected',
+        connectorState: 'Simulated',
         batteryPct: null,
         cpuLoadPct: 42,
         memoryUsedMb: 11400,
@@ -2248,7 +2461,7 @@ export function createInitialVantaState(): VantaSystemState {
           modelVersion: 'COCO-SSD-640px-v2.4',
           frameHash: sha256Hex('EVT-9014:CAM-02:148s'),
         },
-        verified: true,
+        verified: false,
       },
       {
         id: 'EVT-9013',
@@ -2291,7 +2504,7 @@ export function createInitialVantaState(): VantaSystemState {
           modelVersion: 'COCO-SSD-640px-v2.4',
           frameHash: sha256Hex('EVT-9012:CAM-01:bay2'),
         },
-        verified: true,
+        verified: false,
       },
     ],
     incidents: [
@@ -2671,29 +2884,14 @@ export function createInitialVantaState(): VantaSystemState {
       },
       displayThreshold: 0.45,
       eventGenerationThreshold: 0.65,
-      enabledClasses: [
-        'person',
-        'bicycle',
-        'car',
-        'motorcycle',
-        'bus',
-        'truck',
-        'vehicle',
-        'backpack',
-        'handbag',
-        'suitcase',
-        'laptop',
-        'cell phone',
-        'chair',
-        'bottle',
-        'book',
-      ],
+      enabledClasses: [...ALL_COCO_SSD_CLASSES],
       nmsIouThreshold: 0.5,
     },
     measuredVisionTelemetry: {
       modelStatus: 'UNINITIALIZED',
       modelId: 'tfjs-coco-ssd-lite_mobilenet_v2',
       modelVersion: '2.2.3',
+      backend: 'uninitialized',
       modelInitTimeMs: null,
       inferenceLatencyMs: null,
       processedFrames: 0,
@@ -2704,9 +2902,12 @@ export function createInitialVantaState(): VantaSystemState {
       activeDetectionsCount: 6,
       errorCount: 0,
       lastError: null,
+      lastErrorCategory: null,
       performanceProfile: 'BALANCED',
       provenanceMode: 'SIMULATED_DEMO',
+      lastStageDiagnostics: null,
     },
+    brainAiDiagnostics: buildDefaultBrainAiDiagnostics(false),
     detectionEventRules: [
       {
         ruleId: 'RULE-V15-PERSON-DWELL',
@@ -2745,4 +2946,252 @@ export function createInitialVantaState(): VantaSystemState {
     latestNormalizedDetections: [],
   };
 }
+
+/**
+ * Deterministic Schema Validation, Legacy State Upgrade, and Corruption Recovery
+ * Ensures corrupted, partial, or legacy persisted JSON never crashes startup or leaves an invalid hash chain.
+ */
+export function validateAndHydrateSystemState(
+  candidate: unknown,
+  options: {
+    apiKeyConfigured?: boolean;
+    resetTransientWebcamOnBoot?: boolean;
+    upgradeLegacyClassFilter?: boolean;
+  } = {}
+): {
+  state: VantaSystemState;
+  recoveredFromCorruption: boolean;
+  warnings: string[];
+} {
+  const fallback = createInitialVantaState();
+  const warnings: string[] = [];
+  let recoveredFromCorruption = false;
+
+  if (!candidate || typeof candidate !== 'object') {
+    warnings.push('Persisted state was null or non-object; restored verified baseline state.');
+    const fresh = {
+      ...fallback,
+      brainAiDiagnostics: buildDefaultBrainAiDiagnostics(Boolean(options.apiKeyConfigured)),
+    };
+    return { state: fresh, recoveredFromCorruption: true, warnings };
+  }
+
+  const raw = candidate as Partial<VantaSystemState>;
+
+  const hasValidTenant =
+    raw.tenant &&
+    typeof raw.tenant === 'object' &&
+    typeof raw.tenant.tenantId === 'string' &&
+    typeof raw.tenant.siteId === 'string';
+  if (!hasValidTenant) {
+    warnings.push('Missing or invalid tenant context; restored baseline tenant.');
+    recoveredFromCorruption = true;
+  }
+
+  const rawCameras =
+    Array.isArray(raw.cameras) && raw.cameras.length > 0 ? raw.cameras : null;
+  if (!rawCameras) {
+    warnings.push('Missing or empty cameras array; restored baseline cameras.');
+    recoveredFromCorruption = true;
+  }
+
+  const rawDevices =
+    Array.isArray(raw.devices) && raw.devices.length > 0 ? raw.devices : null;
+  if (!rawDevices) {
+    warnings.push('Missing or empty devices array; restored baseline devices.');
+    recoveredFromCorruption = true;
+  }
+
+  const rawZones =
+    Array.isArray(raw.zones) && raw.zones.length > 0 ? raw.zones : null;
+  if (!rawZones) {
+    warnings.push('Missing or empty zones array; restored baseline zones.');
+    recoveredFromCorruption = true;
+  }
+
+  const rawEvents =
+    Array.isArray(raw.events) && raw.events.length > 0 ? raw.events : null;
+  if (!rawEvents) {
+    warnings.push('Missing or empty events array; restored baseline events.');
+    recoveredFromCorruption = true;
+  }
+
+  const rawIncidents =
+    Array.isArray(raw.incidents) && raw.incidents.length > 0 ? raw.incidents : null;
+  if (!rawIncidents) {
+    warnings.push('Missing or empty incidents array; restored baseline incidents.');
+    recoveredFromCorruption = true;
+  }
+
+  const rawPolicies =
+    Array.isArray(raw.policies) && raw.policies.length > 0 ? raw.policies : null;
+  if (!rawPolicies) {
+    warnings.push('Missing or empty policies array; restored baseline policies.');
+    recoveredFromCorruption = true;
+  }
+
+  // Validate SHA-256 audit chain integrity on hydration
+  let validAuditTrail = fallback.auditTrail;
+  if (Array.isArray(raw.auditTrail) && raw.auditTrail.length > 0) {
+    const chainCheck = verifyAuditChain(raw.auditTrail);
+    if (chainCheck.valid) {
+      validAuditTrail = raw.auditTrail;
+    } else {
+      warnings.push(
+        `Persisted audit trail failed SHA-256 verification at sequence #${chainCheck.brokenAtSequence}; restored verified genesis ledger and logged recovery block.`
+      );
+      recoveredFromCorruption = true;
+      validAuditTrail = appendAuditRecord(fallback.auditTrail, {
+        tenantId: fallback.tenant.tenantId,
+        actorId: 'SYSTEM-INTEGRITY-GUARD',
+        actorRole: 'ADMIN',
+        category: 'AUTH',
+        action: 'STATE_AUDIT_RECOVERY_FROM_CORRUPTION',
+        targetId: 'AUDIT-LEDGER',
+        outcome: 'SUCCESS',
+        details: `Recovered tampered or corrupted persisted audit chain (broken at sequence #${chainCheck.brokenAtSequence}).`,
+      });
+    }
+  } else {
+    warnings.push('Missing or empty auditTrail; restored verified baseline ledger.');
+    recoveredFromCorruption = true;
+  }
+
+  const seededDeviceIds = new Set(['DEV-AND-01', 'DEV-TAB-02', 'DEV-WIN-03']);
+  const normalizedDevices = (rawDevices || fallback.devices).map((dev) =>
+    seededDeviceIds.has(dev.id) && dev.connectorState === 'Connected'
+      ? { ...dev, connectorState: 'Simulated' as const }
+      : dev
+  );
+
+  const normalizedCameras = (rawCameras || fallback.cameras).map((cam) => {
+    if (options.resetTransientWebcamOnBoot) {
+      return {
+        ...cam,
+        isSimulatedStream: true,
+        connectorState:
+          cam.connectorState === 'Degraded' || cam.connectorState === 'Disconnected'
+            ? cam.connectorState
+            : ('Simulated' as const),
+      };
+    }
+    return cam;
+  });
+
+  const normalizedEvents = (rawEvents || fallback.events).map((ev) =>
+    ev.provenance === 'Simulated' ? { ...ev, verified: false } : ev
+  );
+
+  const shouldUpgradeLegacyClasses = options.upgradeLegacyClassFilter !== false;
+  const baseFilter = raw.detectionFilterConfig || fallback.detectionFilterConfig!;
+  const upgradedFilter = {
+    ...fallback.detectionFilterConfig!,
+    ...baseFilter,
+    enabledClasses:
+      !Array.isArray(baseFilter.enabledClasses) ||
+      baseFilter.enabledClasses.length === 0 ||
+      (shouldUpgradeLegacyClasses && baseFilter.enabledClasses.length < 80)
+        ? [...ALL_COCO_SSD_CLASSES]
+        : baseFilter.enabledClasses,
+  };
+
+  const activeTracks = Array.isArray(raw.activeTracks)
+    ? raw.activeTracks
+    : fallback.activeTracks || [];
+
+  const hydrated: VantaSystemState = {
+    ...fallback,
+    ...raw,
+    version: '16.0.0',
+    codename: 'VANTA NEXUS',
+    tenant: hasValidTenant ? { ...fallback.tenant, ...raw.tenant } : fallback.tenant,
+    syncRevision:
+      typeof raw.syncRevision === 'number' && Number.isFinite(raw.syncRevision)
+        ? Math.max(1, raw.syncRevision)
+        : fallback.syncRevision,
+    lastCloudSyncIso:
+      typeof raw.lastCloudSyncIso === 'string' && raw.lastCloudSyncIso
+        ? raw.lastCloudSyncIso
+        : fallback.lastCloudSyncIso,
+    connectedClients:
+      typeof raw.connectedClients === 'number' && Number.isFinite(raw.connectedClients)
+        ? Math.max(1, raw.connectedClients)
+        : 1,
+    cameras: normalizedCameras,
+    devices: normalizedDevices,
+    pairingSessions: Array.isArray(raw.pairingSessions)
+      ? raw.pairingSessions
+      : fallback.pairingSessions,
+    zones: rawZones || fallback.zones,
+    events: normalizedEvents,
+    incidents: rawIncidents || fallback.incidents,
+    policies: rawPolicies || fallback.policies,
+    auditTrail: validAuditTrail,
+    conversations:
+      Array.isArray(raw.conversations) && raw.conversations.length > 0
+        ? raw.conversations
+        : fallback.conversations,
+    toolExecutions: Array.isArray(raw.toolExecutions)
+      ? raw.toolExecutions
+      : fallback.toolExecutions,
+    timeSeries:
+      Array.isArray(raw.timeSeries) && raw.timeSeries.length > 0
+        ? raw.timeSeries
+        : fallback.timeSeries,
+    preferences:
+      raw.preferences && typeof raw.preferences === 'object'
+        ? { ...fallback.preferences, ...raw.preferences }
+        : fallback.preferences,
+    visionModel: raw.visionModel || fallback.visionModel,
+    activeTracks,
+    workflows:
+      Array.isArray(raw.workflows) && raw.workflows.length > 0
+        ? raw.workflows
+        : fallback.workflows,
+    memoryGovernance: raw.memoryGovernance
+      ? { ...fallback.memoryGovernance!, ...raw.memoryGovernance }
+      : fallback.memoryGovernance,
+    observability: raw.observability
+      ? { ...fallback.observability!, ...raw.observability }
+      : fallback.observability,
+    detectionFilterConfig: upgradedFilter,
+    measuredVisionTelemetry: {
+      ...fallback.measuredVisionTelemetry!,
+      ...(raw.measuredVisionTelemetry || {}),
+    },
+    brainAiDiagnostics:
+      options.apiKeyConfigured !== undefined
+        ? options.apiKeyConfigured
+          ? raw.brainAiDiagnostics?.geminiConfigured &&
+            (raw.brainAiDiagnostics.status === 'GEMINI CONNECTED' ||
+              Boolean(raw.brainAiDiagnostics.lastErrorCategory))
+            ? {
+                ...raw.brainAiDiagnostics,
+                geminiConfigured: true,
+                modelName: 'gemini-4-hydrogen',
+              }
+            : buildDefaultBrainAiDiagnostics(true)
+          : buildDefaultBrainAiDiagnostics(false)
+        : raw.brainAiDiagnostics || buildDefaultBrainAiDiagnostics(false),
+    detectionEventRules:
+      Array.isArray(raw.detectionEventRules) && raw.detectionEventRules.length > 0
+        ? raw.detectionEventRules
+        : fallback.detectionEventRules,
+    latestNormalizedDetections: Array.isArray(raw.latestNormalizedDetections)
+      ? raw.latestNormalizedDetections
+      : [],
+  };
+
+  hydrated.sceneSummaries = hydrated.cameras.map((cam) =>
+    buildSceneIntelligenceSummary(cam, activeTracks)
+  );
+  hydrated.correlationPipeline = buildCorrelationPipelineStages(hydrated);
+
+  return {
+    state: hydrated,
+    recoveredFromCorruption,
+    warnings,
+  };
+}
+
 

@@ -24,5 +24,11 @@
     "allowImportingTsExtensions": true,
     "noEmit": true
   },
-  "exclude": ["dist"]
+  "exclude": [
+    "dist",
+    "node_modules",
+    ".backup-v14",
+    ".backup-v15.0",
+    ".backup-v16.0"
+  ]
 }

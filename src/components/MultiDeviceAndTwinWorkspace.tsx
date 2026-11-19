@@ -21,7 +21,7 @@ interface MultiDeviceAndTwinWorkspaceProps {
     deviceName: string,
     targetPlatform: DeviceEntity['platform']
   ) => Promise<{ error?: string }>;
-  onRevokeDevice: (deviceId: string) => Promise<void>;
+  onRevokeDevice: (deviceId: string) => Promise<{ error?: string } | void>;
 }
 
 export const MultiDeviceAndTwinWorkspace: React.FC<
@@ -31,6 +31,8 @@ export const MultiDeviceAndTwinWorkspace: React.FC<
   const [targetPlatform, setTargetPlatform] =
     useState<DeviceEntity['platform']>('Android Node');
   const [pairFeedback, setPairFeedback] = useState<string | null>(null);
+  const [isPairing, setIsPairing] = useState<boolean>(false);
+  const [revokingDeviceId, setRevokingDeviceId] = useState<string | null>(null);
 
   // Digital Twin & Forensic Scrubber state
   const [selectedZoneId, setSelectedZoneId] = useState<string>(
@@ -44,20 +46,53 @@ export const MultiDeviceAndTwinWorkspace: React.FC<
   const selectedZone =
     state.zones.find((z) => z.id === selectedZoneId) || state.zones[0];
   const latestPairing = state.pairingSessions[0];
+  const safeReplayIdx = Math.min(
+    Math.max(0, replayIndex),
+    Math.max(0, state.timeSeries.length - 1)
+  );
   const currentReplayPoint =
-    state.timeSeries[replayIndex] || state.timeSeries[state.timeSeries.length - 1];
+    state.timeSeries[safeReplayIdx] || state.timeSeries[state.timeSeries.length - 1];
 
   const handlePairSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isPairing) return;
+    const trimmed = newDeviceName.trim();
+    if (trimmed.length < 3 || trimmed.length > 80) {
+      setPairFeedback('Error: Device name must be between 3 and 80 characters.');
+      return;
+    }
+    setIsPairing(true);
     setPairFeedback(null);
-    const res = await onPairDevice(newDeviceName, targetPlatform);
-    if (res.error) {
-      setPairFeedback(`Error: ${res.error}`);
-    } else {
-      setPairFeedback(
-        `Device "${newDeviceName}" (${targetPlatform}) paired via short-lived token and synchronized across Cloud Event Bus.`
-      );
-      setNewDeviceName('');
+    try {
+      const res = await onPairDevice(trimmed, targetPlatform);
+      if (res.error) {
+        setPairFeedback(`Error: ${res.error}`);
+      } else {
+        setPairFeedback(
+          `Device "${trimmed}" (${targetPlatform}) paired via short-lived token and synchronized across Cloud Event Bus.`
+        );
+        setNewDeviceName('');
+      }
+    } finally {
+      setIsPairing(false);
+    }
+  };
+
+  const handleRevokeClick = async (deviceId: string) => {
+    if (revokingDeviceId) return;
+    setRevokingDeviceId(deviceId);
+    setPairFeedback(null);
+    try {
+      const res = await onRevokeDevice(deviceId);
+      if (res && res.error) {
+        setPairFeedback(`Error: ${res.error}`);
+      } else {
+        setPairFeedback(
+          `Device ${deviceId} authorization toggled and recorded in SHA-256 audit ledger.`
+        );
+      }
+    } finally {
+      setRevokingDeviceId(null);
     }
   };
 
@@ -137,9 +172,12 @@ export const MultiDeviceAndTwinWorkspace: React.FC<
 
                 <button
                   type="submit"
-                  className="w-full py-2 text-xs font-semibold rounded-lg bg-sky-600 hover:bg-sky-500 text-white transition-colors"
+                  disabled={isPairing}
+                  className="w-full py-2 text-xs font-semibold rounded-lg bg-sky-600 hover:bg-sky-500 disabled:opacity-50 text-white transition-colors"
                 >
-                  Generate Pairing Token & Authorize Device
+                  {isPairing
+                    ? 'Provisioning Token...'
+                    : 'Generate Pairing Token & Authorize Device'}
                 </button>
               </form>
 
@@ -220,8 +258,9 @@ export const MultiDeviceAndTwinWorkspace: React.FC<
 
                   <button
                     type="button"
-                    onClick={() => onRevokeDevice(dev.id)}
-                    className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors whitespace-nowrap shrink-0 ${
+                    disabled={revokingDeviceId === dev.id}
+                    onClick={() => void handleRevokeClick(dev.id)}
+                    className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors whitespace-nowrap shrink-0 disabled:opacity-50 ${
                       dev.authorized
                         ? 'border-rose-500/40 text-rose-600 dark:text-rose-400 hover:bg-rose-500/10'
                         : 'border-emerald-500/40 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10'
@@ -456,14 +495,14 @@ export const MultiDeviceAndTwinWorkspace: React.FC<
             htmlFor="forensic-scrubber"
             className="block text-xs font-mono text-slate-600 dark:text-slate-400"
           >
-            Scrub Historical Telemetry Checkpoint ({replayIndex + 1} / {state.timeSeries.length})
+            Scrub Historical Telemetry Checkpoint ({safeReplayIdx + 1} / {state.timeSeries.length})
           </label>
           <input
             id="forensic-scrubber"
             type="range"
             min={0}
             max={Math.max(0, state.timeSeries.length - 1)}
-            value={replayIndex}
+            value={safeReplayIdx}
             onChange={(e) => setReplayIndex(Number(e.target.value))}
             className="w-full accent-sky-500"
           />

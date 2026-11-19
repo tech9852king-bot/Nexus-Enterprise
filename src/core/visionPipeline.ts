@@ -7,6 +7,7 @@ import {
   NormalizedDetection,
   ObjectTrack,
   PerformanceProfile,
+  PipelineStageDiagnostics,
   SecurityEvent,
 } from './types';
 import { computeIoU, classifyTrackDirection, sha256Hex } from './engine';
@@ -24,64 +25,110 @@ export interface VideoReadinessResult {
   height: number;
 }
 
+/**
+ * Complete 80-class COCO-SSD label map (matching @tensorflow-models/coco-ssd classes)
+ */
 export const COCO_CLASS_IDS: Record<string, number> = {
   person: 1,
   bicycle: 2,
   car: 3,
+  vehicle: 3,
   motorcycle: 4,
   airplane: 5,
   bus: 6,
   train: 7,
   truck: 8,
   boat: 9,
+  'traffic light': 10,
+  'fire hydrant': 11,
+  'stop sign': 13,
+  'parking meter': 14,
+  bench: 15,
+  bird: 16,
+  cat: 17,
+  dog: 18,
+  horse: 19,
+  sheep: 20,
+  cow: 21,
+  elephant: 22,
+  bear: 23,
+  zebra: 24,
+  giraffe: 25,
   backpack: 27,
   umbrella: 28,
   handbag: 31,
   tie: 32,
   suitcase: 33,
+  frisbee: 34,
+  skis: 35,
+  snowboard: 36,
+  'sports ball': 37,
+  kite: 38,
+  'baseball bat': 39,
+  'baseball glove': 40,
+  skateboard: 41,
+  surfboard: 42,
+  'tennis racket': 43,
   bottle: 44,
+  'wine glass': 46,
+  cup: 47,
+  fork: 48,
+  knife: 49,
+  spoon: 50,
+  bowl: 51,
+  banana: 52,
+  apple: 53,
+  sandwich: 54,
+  orange: 55,
+  broccoli: 56,
+  carrot: 57,
+  'hot dog': 58,
+  pizza: 59,
+  donut: 60,
+  cake: 61,
   chair: 62,
   couch: 63,
+  'potted plant': 64,
   potted_plant: 64,
+  bed: 65,
+  'dining table': 67,
+  toilet: 70,
   tv: 72,
   laptop: 73,
   mouse: 74,
+  remote: 75,
   keyboard: 76,
   'cell phone': 77,
+  microwave: 78,
+  oven: 79,
+  toaster: 80,
+  sink: 81,
+  refrigerator: 82,
   book: 84,
   clock: 85,
+  vase: 86,
+  scissors: 87,
+  'teddy bear': 88,
+  'hair drier': 89,
+  toothbrush: 90,
 };
+
+export const ALL_COCO_SSD_CLASSES: string[] = Object.keys(COCO_CLASS_IDS);
 
 export const DEFAULT_DETECTION_FILTER_CONFIG: DetectionFilterConfig = {
   globalMinConfidence: 0.45,
   classThresholds: {
-    person: 0.5,
-    car: 0.5,
-    truck: 0.5,
-    vehicle: 0.5,
+    person: 0.45,
+    car: 0.45,
+    truck: 0.45,
+    vehicle: 0.45,
     laptop: 0.45,
     'cell phone': 0.45,
     backpack: 0.45,
   },
   displayThreshold: 0.45,
   eventGenerationThreshold: 0.65,
-  enabledClasses: [
-    'person',
-    'bicycle',
-    'car',
-    'motorcycle',
-    'bus',
-    'truck',
-    'vehicle',
-    'backpack',
-    'handbag',
-    'suitcase',
-    'laptop',
-    'cell phone',
-    'chair',
-    'bottle',
-    'book',
-  ],
+  enabledClasses: ALL_COCO_SSD_CLASSES,
   nmsIouThreshold: 0.5,
 };
 
@@ -222,7 +269,8 @@ export function validateAndNormalizePredictions(
       return;
     }
     const candidate = raw as Partial<RawModelPrediction>;
-    const className = typeof candidate.class === 'string' ? candidate.class.trim().toLowerCase() : '';
+    const rawClass = typeof candidate.class === 'string' ? candidate.class.trim().toLowerCase() : '';
+    const className = rawClass === 'potted_plant' ? 'potted plant' : rawClass;
     const score = Number(candidate.score);
     const bbox = candidate.bbox;
 
@@ -315,7 +363,8 @@ export function validateAndNormalizePredictions(
 
 /**
  * PART D7: Configurable Confidence and Class Filtering
- * Keeps rawConfidence separate and returns both display-qualified and event-qualified detections.
+ * Keeps rawConfidence separate and returns both display-qualified and event-qualified detections,
+ * plus exact counts of class-filtered and confidence-filtered predictions for Section 3.7 diagnostics.
  */
 export function filterPredictionsByConfig(
   detections: NormalizedDetection[],
@@ -323,27 +372,46 @@ export function filterPredictionsByConfig(
 ): {
   displayDetections: NormalizedDetection[];
   eventCandidateDetections: NormalizedDetection[];
+  classFilteredCount: number;
+  confidenceFilteredCount: number;
 } {
-  const enabledSet = new Set(config.enabledClasses.map((c) => c.toLowerCase()));
+  const enabledSet = new Set(
+    config.enabledClasses.map((c) => {
+      const norm = c.trim().toLowerCase();
+      return norm === 'potted_plant' ? 'potted plant' : norm;
+    })
+  );
 
-  const classAndConfidenceFiltered = detections.filter((d) => {
+  let classFilteredCount = 0;
+  let confidenceFilteredCount = 0;
+  const classAndConfidenceFiltered: NormalizedDetection[] = [];
+
+  for (const d of detections) {
     const cls = d.className.toLowerCase();
     if (enabledSet.size > 0 && !enabledSet.has(cls)) {
-      return false;
+      classFilteredCount++;
+      continue;
     }
     const classMin = config.classThresholds[cls] ?? config.globalMinConfidence;
-    const effectiveMin = Math.max(config.globalMinConfidence, classMin);
-    return d.rawConfidence >= effectiveMin;
-  });
+    const effectiveMin = Math.max(config.globalMinConfidence, classMin, config.displayThreshold);
+    if (d.rawConfidence < effectiveMin) {
+      confidenceFilteredCount++;
+      continue;
+    }
+    classAndConfidenceFiltered.push(d);
+  }
 
-  const displayDetections = classAndConfidenceFiltered.filter(
-    (d) => d.rawConfidence >= config.displayThreshold
-  );
+  const displayDetections = classAndConfidenceFiltered;
   const eventCandidateDetections = classAndConfidenceFiltered.filter(
     (d) => d.rawConfidence >= config.eventGenerationThreshold
   );
 
-  return { displayDetections, eventCandidateDetections };
+  return {
+    displayDetections,
+    eventCandidateDetections,
+    classFilteredCount,
+    confidenceFilteredCount,
+  };
 }
 
 /**
@@ -387,6 +455,90 @@ export function applyNormalizedClassAwareNMS(
 }
 
 /**
+ * Section 3.7 Complete Stage-by-Stage Detection Pipeline Execution & Diagnostics
+ */
+export function executeFullDetectionPipelinePass(
+  rawPredictions: unknown[],
+  frameContext: {
+    sourceFrameWidth: number;
+    sourceFrameHeight: number;
+    cameraId: string;
+    modelId: string;
+    modelVersion: string;
+    inferenceId: string;
+    timestampIso?: string;
+    provenance: DetectionProvenance;
+    sourceType?: 'LIVE_VIDEO' | 'TEST_FIXTURE';
+  },
+  filterConfig: DetectionFilterConfig = DEFAULT_DETECTION_FILTER_CONFIG
+): {
+  validDetections: NormalizedDetection[];
+  displayDetections: NormalizedDetection[];
+  eventCandidateDetections: NormalizedDetection[];
+  nmsDetections: NormalizedDetection[];
+  diagnostics: PipelineStageDiagnostics;
+} {
+  const timestampIso = frameContext.timestampIso || new Date().toISOString();
+  const rawList = Array.isArray(rawPredictions) ? rawPredictions : [];
+  const rawClassesObserved = rawList
+    .filter((r): r is RawModelPrediction => Boolean(r && typeof r === 'object' && 'class' in (r as object)))
+    .map((r) => ({
+      className: String(r.class || '').trim().toLowerCase(),
+      score: Number(Number(r.score || 0).toFixed(3)),
+    }));
+
+  const { validDetections, rejectedCount, rejectionReasons } = validateAndNormalizePredictions(
+    rawPredictions,
+    {
+      ...frameContext,
+      timestampIso,
+    }
+  );
+
+  const {
+    displayDetections,
+    eventCandidateDetections,
+    classFilteredCount,
+    confidenceFilteredCount,
+  } = filterPredictionsByConfig(validDetections, filterConfig);
+
+  const nmsDetections = applyNormalizedClassAwareNMS(
+    displayDetections,
+    filterConfig.nmsIouThreshold
+  );
+
+  const nmsSuppressedCount = Math.max(0, displayDetections.length - nmsDetections.length);
+
+  const diagnostics: PipelineStageDiagnostics = {
+    inferenceId: frameContext.inferenceId,
+    timestampIso,
+    sourceType: frameContext.sourceType || (frameContext.provenance === 'REAL_MODEL' ? 'LIVE_VIDEO' : 'TEST_FIXTURE'),
+    sourceDimensions: {
+      width: frameContext.sourceFrameWidth,
+      height: frameContext.sourceFrameHeight,
+    },
+    rawPredictionsCount: rawList.length,
+    validPredictionsCount: validDetections.length,
+    rejectedPredictionsCount: rejectedCount,
+    rejectionReasons,
+    confidenceFilteredCount,
+    classFilteredCount,
+    nmsSuppressedCount,
+    finalDisplayedCount: nmsDetections.length,
+    rawClassesObserved,
+  };
+
+  return {
+    validDetections,
+    displayDetections,
+    eventCandidateDetections,
+    nmsDetections,
+    diagnostics,
+  };
+}
+
+
+/**
  * PART D9: Camera-Scoped Object Tracking with Track Expiration & Non-Biometric Guarantee
  */
 export function updateCameraObjectTracks(
@@ -403,6 +555,31 @@ export function updateCameraObjectTracks(
   const maxMissedFrames = options.maxMissedFrames ?? 3;
   const updatedTracks: ObjectTrack[] = [];
   const matchedDetectionIds = new Set<string>();
+  const validDetections = (Array.isArray(nmsDetections) ? nmsDetections : []).filter(
+    (d): d is NormalizedDetection =>
+      Boolean(
+        d &&
+          typeof d === 'object' &&
+          typeof d.className === 'string' &&
+          d.className.trim().length > 0 &&
+          typeof d.confidence === 'number' &&
+          Number.isFinite(d.confidence) &&
+          d.boundingBox &&
+          typeof d.boundingBox === 'object' &&
+          Number.isFinite(d.boundingBox.x) &&
+          Number.isFinite(d.boundingBox.y) &&
+          Number.isFinite(d.boundingBox.width) &&
+          Number.isFinite(d.boundingBox.height) &&
+          d.boundingBox.width > 0 &&
+          d.boundingBox.height > 0
+      )
+  ).map((d, idx) => ({
+    ...d,
+    detectionId:
+      typeof d.detectionId === 'string' && d.detectionId.length > 0
+        ? d.detectionId
+        : `DET-${cameraId}-${idx}`,
+  }));
 
   for (const track of existingTracks) {
     if (track.cameraId !== cameraId) {
@@ -413,7 +590,7 @@ export function updateCameraObjectTracks(
     let bestDet: NormalizedDetection | null = null;
     let bestScore = 0;
 
-    for (const det of nmsDetections) {
+    for (const det of validDetections) {
       if (matchedDetectionIds.has(det.detectionId) || det.className !== track.label) {
         continue;
       }
@@ -464,7 +641,7 @@ export function updateCameraObjectTracks(
     // Tracks exceeding maxMissedFrames are expired and not pushed
   }
 
-  for (const det of nmsDetections) {
+  for (const det of validDetections) {
     if (matchedDetectionIds.has(det.detectionId)) continue;
     const cx = Number((det.boundingBox.x + det.boundingBox.width / 2).toFixed(2));
     const cy = Number((det.boundingBox.y + det.boundingBox.height / 2).toFixed(2));
@@ -732,10 +909,19 @@ export function evaluateDetectionEventRules(
  * PART D3: Modular Model Provider Interface & Genuine TensorFlow.js COCO-SSD Implementation
  */
 export interface VisionModelProvider {
-  initialize(): Promise<{
+  initialize(options?: { forceManualRetry?: boolean }): Promise<{
     status: ModelProviderStatus;
     initTimeMs: number | null;
+    backend?: string;
     error?: string;
+    errorCategory?: string;
+  }>;
+  retryInitialize(): Promise<{
+    status: ModelProviderStatus;
+    initTimeMs: number | null;
+    backend?: string;
+    error?: string;
+    errorCategory?: string;
   }>;
   getStatus(): ModelProviderStatus;
   detect(
@@ -749,6 +935,7 @@ export interface VisionModelProvider {
     frameWidth: number;
     frameHeight: number;
     error?: string;
+    errorCategory?: string;
   }>;
   getModelMetadata(): {
     modelId: string;
@@ -756,6 +943,9 @@ export interface VisionModelProvider {
     backend: string;
     status: ModelProviderStatus;
     initTimeMs: number | null;
+    failureCount: number;
+    lastError: string | null;
+    lastErrorCategory: string | null;
   };
   dispose(): void;
 }
@@ -771,11 +961,19 @@ export class TfjsCocoSsdProvider implements VisionModelProvider {
     dispose?: () => void;
   } | null = null;
   private initTimeMs: number | null = null;
-  private backendName = 'webgl';
+  private backendName = 'uninitialized';
+  private failureCount = 0;
+  private lastFailureMs = 0;
+  private lastError: string | null = null;
+  private lastErrorCategory: string | null = null;
+  private readonly maxAutoRetries = 2;
+  private readonly baseBackoffMs = 1500;
   private initPromise: Promise<{
     status: ModelProviderStatus;
     initTimeMs: number | null;
+    backend?: string;
     error?: string;
+    errorCategory?: string;
   }> | null = null;
   private readonly customLoader?: () => Promise<{
     detect: (
@@ -810,26 +1008,76 @@ export class TfjsCocoSsdProvider implements VisionModelProvider {
       backend: this.backendName,
       status: this.status,
       initTimeMs: this.initTimeMs,
+      failureCount: this.failureCount,
+      lastError: this.lastError,
+      lastErrorCategory: this.lastErrorCategory,
     };
   }
 
-  public async initialize(): Promise<{
+  public async retryInitialize(): Promise<{
     status: ModelProviderStatus;
     initTimeMs: number | null;
+    backend?: string;
     error?: string;
+    errorCategory?: string;
+  }> {
+    return this.initialize({ forceManualRetry: true });
+  }
+
+  public async initialize(options?: { forceManualRetry?: boolean }): Promise<{
+    status: ModelProviderStatus;
+    initTimeMs: number | null;
+    backend?: string;
+    error?: string;
+    errorCategory?: string;
   }> {
     if (this.status === 'DISPOSED') {
       return {
         status: 'DISPOSED',
         initTimeMs: null,
+        backend: this.backendName,
         error: 'Model provider has been disposed and cannot be reused.',
+        errorCategory: 'PROVIDER_DISPOSED',
       };
     }
     if ((this.status === 'READY' || this.status === 'RUNNING') && this.model) {
-      return { status: 'READY', initTimeMs: this.initTimeMs };
+      return { status: 'READY', initTimeMs: this.initTimeMs, backend: this.backendName };
     }
     if (this.initPromise) {
       return this.initPromise;
+    }
+
+    // Section 3.3: Bounded retry with exponential backoff — prevent uncontrolled retry loops on every frame
+    if (this.status === 'ERROR' && !options?.forceManualRetry) {
+      if (this.failureCount >= this.maxAutoRetries) {
+        return {
+          status: 'ERROR',
+          initTimeMs: null,
+          backend: this.backendName,
+          error:
+            this.lastError ||
+            `Model initialization failed after ${this.failureCount} attempts. Use explicit retry to attempt again.`,
+          errorCategory: this.lastErrorCategory || 'MAX_RETRIES_EXCEEDED',
+        };
+      }
+      const requiredBackoffMs = this.baseBackoffMs * Math.pow(2, Math.max(0, this.failureCount - 1));
+      const elapsedMs = Date.now() - this.lastFailureMs;
+      if (elapsedMs < requiredBackoffMs) {
+        return {
+          status: 'ERROR',
+          initTimeMs: null,
+          backend: this.backendName,
+          error:
+            this.lastError ||
+            `Model retry backoff active (${Math.ceil((requiredBackoffMs - elapsedMs) / 1000)}s remaining).`,
+          errorCategory: 'RETRY_BACKOFF_ACTIVE',
+        };
+      }
+    }
+
+    if (options?.forceManualRetry) {
+      this.failureCount = 0;
+      this.lastFailureMs = 0;
     }
 
     this.status = 'LOADING';
@@ -837,11 +1085,23 @@ export class TfjsCocoSsdProvider implements VisionModelProvider {
     this.initPromise = (async () => {
       try {
         const loadedModel = this.customLoader
-          ? await this.customLoader()
+          ? await (async () => {
+              this.backendName = 'custom-provider';
+              return this.customLoader!();
+            })()
           : await (async () => {
               const tf = await import('@tensorflow/tfjs');
               await tf.ready();
-              this.backendName = tf.getBackend() || 'cpu';
+              // Verify backend tensor allocation works; fall back to CPU if WebGL context is broken
+              try {
+                const probeTensor = tf.tensor1d([1, 2]);
+                probeTensor.dispose();
+                this.backendName = tf.getBackend() || 'webgl';
+              } catch {
+                await tf.setBackend('cpu');
+                await tf.ready();
+                this.backendName = tf.getBackend() || 'cpu';
+              }
               const cocoSsd = await import('@tensorflow-models/coco-ssd');
               return cocoSsd.load({ base: 'lite_mobilenet_v2' });
             })();
@@ -852,24 +1112,45 @@ export class TfjsCocoSsdProvider implements VisionModelProvider {
           return {
             status: 'DISPOSED' as ModelProviderStatus,
             initTimeMs: null,
+            backend: this.backendName,
             error: 'Model provider was disposed during initialization.',
+            errorCategory: 'PROVIDER_DISPOSED',
           };
         }
 
         this.model = loadedModel;
         this.initTimeMs = Math.max(1, Math.round(performance.now() - startMs));
+        this.failureCount = 0;
+        this.lastError = null;
+        this.lastErrorCategory = null;
         this.status = 'READY';
-        return { status: 'READY' as ModelProviderStatus, initTimeMs: this.initTimeMs };
+        return {
+          status: 'READY' as ModelProviderStatus,
+          initTimeMs: this.initTimeMs,
+          backend: this.backendName,
+        };
       } catch (err) {
+        this.failureCount += 1;
+        this.lastFailureMs = Date.now();
         if (this.status !== 'DISPOSED') {
           this.status = 'ERROR';
         }
         const message =
           err instanceof Error ? err.message : 'Failed to initialize COCO-SSD model.';
+        const category =
+          message.toLowerCase().includes('fetch') || message.toLowerCase().includes('network')
+            ? 'MODEL_DOWNLOAD_FAILED'
+            : message.toLowerCase().includes('webgl') || message.toLowerCase().includes('backend')
+              ? 'BACKEND_INIT_FAILED'
+              : 'MODEL_INIT_FAILED';
+        this.lastError = message;
+        this.lastErrorCategory = category;
         return {
           status: this.status,
           initTimeMs: null,
+          backend: this.backendName,
           error: message,
+          errorCategory: category,
         };
       } finally {
         this.initPromise = null;
@@ -889,6 +1170,7 @@ export class TfjsCocoSsdProvider implements VisionModelProvider {
     frameWidth: number;
     frameHeight: number;
     error?: string;
+    errorCategory?: string;
   }> {
     const inferenceId = `INF-${cameraId}-${Date.now().toString(36).toUpperCase()}`;
     if ((this.status !== 'READY' && this.status !== 'RUNNING') || !this.model) {
@@ -899,17 +1181,32 @@ export class TfjsCocoSsdProvider implements VisionModelProvider {
         frameWidth: 0,
         frameHeight: 0,
         error: `Model provider is not READY (current status: ${this.status}).`,
+        errorCategory: 'MODEL_NOT_READY',
       };
     }
 
-    const frameWidth =
-      (input as HTMLVideoElement).videoWidth ||
-      (input as HTMLCanvasElement).width ||
-      640;
-    const frameHeight =
-      (input as HTMLVideoElement).videoHeight ||
-      (input as HTMLCanvasElement).height ||
-      360;
+    const isVideo = typeof HTMLVideoElement !== 'undefined' && input instanceof HTMLVideoElement;
+    const rawWidth = isVideo
+      ? (input as HTMLVideoElement).videoWidth
+      : (input as HTMLCanvasElement).width ?? (input as ImageData).width ?? 640;
+    const rawHeight = isVideo
+      ? (input as HTMLVideoElement).videoHeight
+      : (input as HTMLCanvasElement).height ?? (input as ImageData).height ?? 360;
+
+    if (rawWidth <= 0 || rawHeight <= 0) {
+      return {
+        rawPredictions: [],
+        inferenceId,
+        latencyMs: 0,
+        frameWidth: 0,
+        frameHeight: 0,
+        error: `Input frame has invalid zero dimensions (${rawWidth}x${rawHeight}). Ensure video stream metadata is loaded.`,
+        errorCategory: 'INVALID_FRAME_DIMENSIONS',
+      };
+    }
+
+    const frameWidth = rawWidth;
+    const frameHeight = rawHeight;
 
     this.status = 'RUNNING';
     const startMs = performance.now();
@@ -918,7 +1215,7 @@ export class TfjsCocoSsdProvider implements VisionModelProvider {
       const latencyMs = Math.max(1, Math.round(performance.now() - startMs));
       this.status = 'READY';
       return {
-        rawPredictions,
+        rawPredictions: Array.isArray(rawPredictions) ? rawPredictions : [],
         inferenceId,
         latencyMs,
         frameWidth,
@@ -927,6 +1224,8 @@ export class TfjsCocoSsdProvider implements VisionModelProvider {
     } catch (err) {
       this.status = 'ERROR';
       const message = err instanceof Error ? err.message : 'Model inference failed.';
+      this.lastError = message;
+      this.lastErrorCategory = 'INFERENCE_EXECUTION_FAILED';
       return {
         rawPredictions: [],
         inferenceId,
@@ -934,6 +1233,7 @@ export class TfjsCocoSsdProvider implements VisionModelProvider {
         frameWidth,
         frameHeight,
         error: message,
+        errorCategory: 'INFERENCE_EXECUTION_FAILED',
       };
     }
   }
@@ -958,14 +1258,33 @@ export function normalizedToBoundingBoxes(
   tracks: ObjectTrack[],
   zoneId: string
 ): BoundingBox[] {
-  return detections.map((d) => {
+  const validDetections = (Array.isArray(detections) ? detections : []).filter(
+    (d): d is NormalizedDetection =>
+      Boolean(
+        d &&
+          typeof d === 'object' &&
+          typeof d.className === 'string' &&
+          d.className.trim().length > 0 &&
+          typeof d.confidence === 'number' &&
+          Number.isFinite(d.confidence) &&
+          d.boundingBox &&
+          typeof d.boundingBox === 'object' &&
+          Number.isFinite(d.boundingBox.x) &&
+          Number.isFinite(d.boundingBox.y) &&
+          Number.isFinite(d.boundingBox.width) &&
+          Number.isFinite(d.boundingBox.height) &&
+          d.boundingBox.width > 0 &&
+          d.boundingBox.height > 0
+      )
+  );
+  return validDetections.map((d, idx) => {
     const matchingTrack = tracks.find(
       (t) =>
         t.label === d.className &&
         computeIoU(t.bbox, d.boundingBox) >= 0.3
     );
     return {
-      id: matchingTrack?.trackId || d.detectionId,
+      id: matchingTrack?.trackId || d.detectionId || `DET-${zoneId}-${idx}`,
       label: d.className,
       confidence: d.confidence,
       x: d.boundingBox.x,
